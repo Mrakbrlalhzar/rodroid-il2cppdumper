@@ -91,11 +91,25 @@ jobs:
           cp -R "$APP_DIR" Payload/
           zip -qr Rodroid_IL2CPPDumper_iOS_unsigned.ipa Payload
 
-      - name: Upload to Release
+      - name: Upload as Action Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-Unsigned-IPA
+          path: Rodroid_IL2CPPDumper_iOS_unsigned.ipa
+          retention-days: 7
+
+      - name: Upload to Release (If tag exists)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          # Wait up to 30 seconds for the main release to be created if both triggered by push tag simultaneously
-          sleep 15 
-          gh release upload "v$VERSION" Rodroid_IL2CPPDumper_iOS_unsigned.ipa --clobber
+          
+          # Only try to upload to release if the release actually exists in GitHub!
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "Release v$VERSION found. Uploading..."
+            sleep 15 
+            gh release upload "v$VERSION" Rodroid_IL2CPPDumper_iOS_unsigned.ipa --clobber
+          else
+            echo "Release v$VERSION does not exist yet. Skipping release upload."
+            echo "You can download the .ipa from the artifacts on this Action run page!"
+          fi
