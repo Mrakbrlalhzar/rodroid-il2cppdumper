@@ -79,32 +79,6 @@
     unlistenCrash?.();
   });
 
-  function configToSnakeCase(cfg: DumperConfig): string {
-    return JSON.stringify({
-      dump_method: cfg.dumpMethod, dump_field: cfg.dumpField,
-      dump_property: cfg.dumpProperty, dump_attribute: cfg.dumpAttribute,
-      dump_method_offset: cfg.dumpMethodOffset, dump_field_offset: cfg.dumpFieldOffset,
-      dump_type_def_index: cfg.dumpTypeDefIndex, dump_assembly_name: cfg.dumpAssemblyName,
-      generate_struct: cfg.generateStruct, generate_dummy_dll: cfg.generateDummyDll,
-      dummy_dll_add_token: cfg.dummyDllAddToken, force_il2cpp_version: cfg.forceIl2cppVersion,
-      force_version: cfg.forceVersion, force_dump: cfg.forceDump,
-      no_redirected_pointer: cfg.noRedirectedPointer, split_dump_per_type: cfg.splitDumpPerType,
-      generate_generics_dump: cfg.generateGenericsDump, dump_generics_rgctx: cfg.dumpGenericsRgctx,
-      dump_generics_method_specs: cfg.dumpGenericsMethodSpecs,
-      dump_generics_custom_attributes: cfg.dumpGenericsCustomAttributes,
-      dump_generics_string_literals: cfg.dumpGenericsStringLiterals,
-      dump_generics_metadata_usages: cfg.dumpGenericsMetadataUsages,
-      dump_generics_vtables: cfg.dumpGenericsVtables,
-      dump_generics_interfaces: cfg.dumpGenericsInterfaces,
-      dump_disassembly: cfg.dumpDisassembly, dump_disassembly_target: cfg.dumpDisassemblyTarget,
-      dump_disassembly_hex_bytes: cfg.dumpDisassemblyHexBytes,
-      dump_disassembly_field_names: cfg.dumpDisassemblyFieldNames,
-      dump_disassembly_annotations: cfg.dumpDisassemblyAnnotations,
-      dump_disassembly_cfg: cfg.dumpDisassemblyCfg,
-      max_disassembly_instructions: cfg.maxDisassemblyInstructions,
-    });
-  }
-
   let dumpStarted = false;
 
   $effect(() => {
@@ -131,7 +105,7 @@
     try {
       await invoke("start_dump", {
         binaryPath: bp, metadataPath: mp,
-        outputDir: outDir, configJson: configToSnakeCase(cfg),
+        outputDir: outDir, configJson: JSON.stringify(cfg),
       });
     } catch (e) {
       errorMessage.set(String(e));
