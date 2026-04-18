@@ -9,6 +9,18 @@
     "core:default",
     "opener:default",
     "dialog:default",
-    "os:default"
+    "os:default",
+    "fs:default",
+    "fs:allow-copy-file",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    {
+      "identifier": "fs:allow-appdata-read",
+      "allow": [{ "path": "$APP_DATA/**" }]
+    },
+    {
+      "identifier": "fs:allow-appdata-write",
+      "allow": [{ "path": "$APP_DATA/**" }]
+    }
   ]
 }

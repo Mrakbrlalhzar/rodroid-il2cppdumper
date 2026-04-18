@@ -27,6 +27,7 @@ yaxpeax-arm = "0.4"
 yaxpeax-arch = "0.3"
 iced-x86 = "1.21"
 tauri-plugin-os = "2"
+tauri-plugin-fs = "2"
 
 [profile.release]
 opt-level = 3

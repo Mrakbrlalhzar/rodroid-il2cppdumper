@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { type } from "@tauri-apps/plugin-os";
+  import { copyFile } from "@tauri-apps/plugin-fs";
+  import { appDataDir, join } from "@tauri-apps/api/path";
   import { appState, currentScreen, config, binaryPath, metadataPath, binaryInfo, t } from "$lib/stores";
   import type { BinaryInfo } from "$lib/types";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -19,9 +21,21 @@
       ...(osType === "ios" ? {} : { filters: [{ name: "IL2CPP Binary", extensions: ["so", "dll", "exe", "dylib", "nso", "wasm", "*"] }] }),
     });
     if (file) {
-      binaryPath.set(file);
+      let finalPath = file;
+      if (osType === "ios") {
+        try {
+          const appData = await appDataDir();
+          const targetPath = await join(appData, "target_binary.bin");
+          await copyFile(file, targetPath);
+          finalPath = targetPath;
+        } catch (e) {
+          console.error("iOS copy error (binary):", e);
+        }
+      }
+
+      binaryPath.set(finalPath);
       try {
-        const info: BinaryInfo = await invoke("detect_binary", { path: file });
+        const info: BinaryInfo = await invoke("detect_binary", { path: finalPath });
         binaryInfo.set(info);
       } catch { binaryInfo.set(null); }
     }
@@ -33,7 +47,20 @@
       multiple: false,
       ...(osType === "ios" ? {} : { filters: [{ name: "Metadata", extensions: ["dat", "*"] }] }),
     });
-    if (file) metadataPath.set(file);
+    if (file) {
+      let finalPath = file;
+      if (osType === "ios") {
+        try {
+          const appData = await appDataDir();
+          const targetPath = await join(appData, "target_metadata.dat");
+          await copyFile(file, targetPath);
+          finalPath = targetPath;
+        } catch (e) {
+          console.error("iOS copy error (metadata):", e);
+        }
+      }
+      metadataPath.set(finalPath);
+    }
   }
 
   function startDump() {
