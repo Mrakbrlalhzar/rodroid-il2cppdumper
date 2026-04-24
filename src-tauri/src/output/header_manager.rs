@@ -123,7 +123,7 @@ impl UnityHeaders {
             .into_iter()
             .filter(|r| {
                 let Ok(mv) = r.metadata_version.parse::<f32>() else { return false; };
-                if (mv - metadata_version).abs() > 0.01 {
+                if (mv.floor() - metadata_version.floor()).abs() > 0.01 {
                     return false;
                 }
                 

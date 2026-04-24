@@ -161,7 +161,7 @@
             </div>
             <div>
               <h1 class="text-sm font-semibold text-foreground tracking-tight">{$t.app_name}</h1>
-              <p class="text-[10px] text-muted-foreground">v3.0 {currentOs}</p>
+              <p class="text-[10px] text-muted-foreground">v4.0 {currentOs}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
