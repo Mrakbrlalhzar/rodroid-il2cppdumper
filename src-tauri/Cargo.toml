@@ -1,6 +1,6 @@
 [package]
 name = "rodroid-il2cppdumper"
-version = "3.0.0"
+version = "4.0.0"
 description = "Rodroid IL2CPP Dumper - Desktop"
 authors = ["rodroid"]
 edition = "2024"
@@ -26,6 +26,7 @@ thiserror = "2"
 yaxpeax-arm = "0.4"
 yaxpeax-arch = "0.3"
 iced-x86 = "1.21"
+include_dir = "0.7.4"
 tauri-plugin-os = "2"
 tauri-plugin-fs = "2"
 

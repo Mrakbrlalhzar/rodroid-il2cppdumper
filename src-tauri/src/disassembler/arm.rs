@@ -1,10 +1,7 @@
-use super::DisassembledInstruction;
 use yaxpeax_arch::{Decoder, LengthedInstruction, U8Reader};
+use yaxpeax_arm::armv8::a64::{InstDecoder as A64Decoder, Instruction as A64Instruction, Opcode as A64Opcode, Operand as A64Operand};
 use yaxpeax_arm::armv7::{InstDecoder as A32Decoder, Instruction as A32Instruction};
-use yaxpeax_arm::armv8::a64::{
-    InstDecoder as A64Decoder, Instruction as A64Instruction, Opcode as A64Opcode,
-    Operand as A64Operand,
-};
+use super::DisassembledInstruction;
 
 pub fn disassemble_arm64(
     bytes: &[u8],
@@ -41,12 +38,15 @@ pub fn disassemble_arm64(
 
         let is_call = matches!(insn.opcode, A64Opcode::BL | A64Opcode::BLR);
 
-        let is_unconditional_branch =
-            matches!(insn.opcode, A64Opcode::B | A64Opcode::BR | A64Opcode::RET);
+        let is_unconditional_branch = matches!(
+            insn.opcode,
+            A64Opcode::B | A64Opcode::BR | A64Opcode::RET
+        );
 
         let is_conditional_branch = matches!(
             insn.opcode,
-            A64Opcode::Bcc(_) | A64Opcode::CBZ | A64Opcode::CBNZ | A64Opcode::TBZ | A64Opcode::TBNZ
+            A64Opcode::Bcc(_) | A64Opcode::CBZ | A64Opcode::CBNZ
+            | A64Opcode::TBZ | A64Opcode::TBNZ
         );
 
         let is_branch = is_unconditional_branch || is_call || is_conditional_branch;
@@ -127,19 +127,15 @@ pub fn disassemble_arm32(
         let full_text = format!("{}", insn);
         let (mnemonic, operands) = split_mnemonic_operands(&full_text);
 
-        let is_return =
-            full_text.contains("pop") && full_text.contains("pc") || full_text.starts_with("bx lr");
+        let is_return = full_text.contains("pop") && full_text.contains("pc")
+            || full_text.starts_with("bx lr");
 
         let is_call = full_text.starts_with("bl ") || full_text.starts_with("blx ");
 
         let is_unconditional_branch = mnemonic == "B" || mnemonic == "BX" || is_return;
 
-        let is_branch = is_unconditional_branch
-            || is_call
-            || mnemonic.starts_with("B")
-                && mnemonic != "BIC"
-                && mnemonic != "BFC"
-                && mnemonic != "BFI";
+        let is_branch = is_unconditional_branch || is_call
+            || mnemonic.starts_with("B") && mnemonic != "BIC" && mnemonic != "BFC" && mnemonic != "BFI";
 
         let call_target = if is_call {
             extract_arm32_branch_target(&full_text, address)
@@ -220,21 +216,21 @@ fn extract_arm64_condition(insn: &A64Instruction, operands: &str) -> Option<Stri
     match insn.opcode {
         A64Opcode::Bcc(cond) => {
             let cond_str = match cond {
-                0 => "==",            // EQ
-                1 => "!=",            // NE
+                0 => "==",       // EQ
+                1 => "!=",       // NE
                 2 => ">= (unsigned)", // CS/HS
                 3 => "< (unsigned)",  // CC/LO
-                4 => "< 0",           // MI (negative)
-                5 => ">= 0",          // PL (positive/zero)
-                6 => "overflow",      // VS
-                7 => "!overflow",     // VC
-                8 => "> (unsigned)",  // HI
+                4 => "< 0",     // MI (negative)
+                5 => ">= 0",    // PL (positive/zero)
+                6 => "overflow", // VS
+                7 => "!overflow", // VC
+                8 => "> (unsigned)", // HI
                 9 => "<= (unsigned)", // LS
-                10 => ">=",           // GE
-                11 => "<",            // LT
-                12 => ">",            // GT
-                13 => "<=",           // LE
-                14 => "always",       // AL
+                10 => ">=",      // GE
+                11 => "<",       // LT
+                12 => ">",       // GT
+                13 => "<=",      // LE
+                14 => "always",  // AL
                 _ => "?",
             };
             Some(cond_str.to_string())
@@ -272,20 +268,10 @@ fn extract_arm64_condition(insn: &A64Instruction, operands: &str) -> Option<Stri
 }
 
 fn extract_arm32_condition(mnemonic: &str) -> Option<String> {
-    if mnemonic.len() < 2 {
-        return None;
-    }
-    if !mnemonic.starts_with('B') {
-        return None;
-    }
-    if mnemonic == "B"
-        || mnemonic == "BL"
-        || mnemonic == "BX"
-        || mnemonic == "BLX"
-        || mnemonic == "BIC"
-        || mnemonic == "BFC"
-        || mnemonic == "BFI"
-    {
+    if mnemonic.len() < 2 { return None; }
+    if !mnemonic.starts_with('B') { return None; }
+    if mnemonic == "B" || mnemonic == "BL" || mnemonic == "BX" || mnemonic == "BLX"
+        || mnemonic == "BIC" || mnemonic == "BFC" || mnemonic == "BFI" {
         return None;
     }
 
@@ -330,23 +316,16 @@ fn extract_arm64_memory_offset(insn: &A64Instruction) -> Option<i64> {
     if let Some(bracket_start) = text.find('[') {
         if let Some(hash_pos) = text[bracket_start..].find('#') {
             let after_hash = &text[bracket_start + hash_pos + 1..];
-            let end = after_hash
-                .find(']')
+            let end = after_hash.find(']')
                 .or_else(|| after_hash.find(','))
                 .unwrap_or(after_hash.len());
             let num_str = after_hash[..end].trim().trim_end_matches('!');
 
-            if let Some(stripped) = num_str
-                .strip_prefix("0x")
-                .or_else(|| num_str.strip_prefix("0X"))
-            {
+            if let Some(stripped) = num_str.strip_prefix("0x").or_else(|| num_str.strip_prefix("0X")) {
                 if let Ok(val) = i64::from_str_radix(stripped, 16) {
                     return Some(val);
                 }
-            } else if let Some(stripped) = num_str
-                .strip_prefix("-0x")
-                .or_else(|| num_str.strip_prefix("-0X"))
-            {
+            } else if let Some(stripped) = num_str.strip_prefix("-0x").or_else(|| num_str.strip_prefix("-0X")) {
                 if let Ok(val) = i64::from_str_radix(stripped, 16) {
                     return Some(-val);
                 }
@@ -381,8 +360,7 @@ fn extract_arm32_memory_offset(text: &str) -> Option<i64> {
     if let Some(bracket_start) = text.find('[') {
         if let Some(hash_pos) = text[bracket_start..].find('#') {
             let after_hash = &text[bracket_start + hash_pos + 1..];
-            let end = after_hash
-                .find(']')
+            let end = after_hash.find(']')
                 .or_else(|| after_hash.find(','))
                 .unwrap_or(after_hash.len());
             let num_str = after_hash[..end].trim();

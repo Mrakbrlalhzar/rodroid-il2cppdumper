@@ -439,7 +439,24 @@ fn init_elf(
         }
     }
 
-    Ok(Il2Cpp::from_elf(&elf))
+    let elf_exports = elf.list_exported_symbols().unwrap_or_default();
+    let mut il2cpp = Il2Cpp::from_elf(&elf);
+    il2cpp.exported_symbols = elf_exports.iter().map(|(n, _)| n.clone()).collect();
+    for (name, addr) in elf_exports {
+        if name.starts_with("il2cpp_") || name.starts_with("mono_") {
+            let rva = il2cpp.get_rva(addr);
+            il2cpp.api_export_rvas.insert(name, rva);
+        }
+    }
+    emit_log(
+        app,
+        &format!(
+            "Found {} exported symbols, {} IL2CPP APIs",
+            il2cpp.exported_symbols.len(),
+            il2cpp.api_export_rvas.len()
+        ),
+    );
+    Ok(il2cpp)
 }
 
 fn init_pe(
@@ -467,7 +484,7 @@ fn init_pe(
     pe.stream.is_32bit = pe.is_32bit;
     emit_log(app, &format!("IL2CPP Version: {version}"));
 
-    if pe.check_dump() {
+    if config.force_dump || pe.check_dump() {
         emit_log(app, "Detected this may be a dump file.");
         if let Some(addr) = prompt_dump_address(app, state) {
             pe.stream.image_base = addr;
@@ -556,6 +573,22 @@ fn init_pe(
         crate::disassembler::Architecture::X64
     });
     il2cpp.init(cr_addr, mr_addr, &|addr| pe.map_vatr(addr))?;
+    if let Ok(exports) = pe.list_exported_symbols() {
+        il2cpp.exported_symbols = exports.iter().map(|(n, _)| n.clone()).collect();
+        for (name, rva) in exports {
+            if name.starts_with("il2cpp_") || name.starts_with("mono_") {
+                il2cpp.api_export_rvas.insert(name, rva);
+            }
+        }
+    }
+    emit_log(
+        app,
+        &format!(
+            "Found {} exported symbols, {} IL2CPP APIs",
+            il2cpp.exported_symbols.len(),
+            il2cpp.api_export_rvas.len()
+        ),
+    );
     Ok(il2cpp)
 }
 
@@ -711,6 +744,24 @@ fn init_macho(
             }
         }
     }
+
+    let macho_exports = macho.list_exported_symbols();
+    il2cpp.exported_symbols = macho_exports.iter().map(|(n, _)| n.clone()).collect();
+    for (name, addr) in macho_exports {
+        if name.starts_with("il2cpp_") || name.starts_with("mono_") {
+            let rva = il2cpp.get_rva(addr);
+            il2cpp.api_export_rvas.insert(name, rva);
+        }
+    }
+    emit_log(
+        app,
+        &format!(
+            "Found {} exported symbols, {} IL2CPP APIs",
+            il2cpp.exported_symbols.len(),
+            il2cpp.api_export_rvas.len()
+        ),
+    );
+
     Ok(il2cpp)
 }
 
@@ -786,6 +837,25 @@ fn init_nso(
         offset: 0,
     }];
     il2cpp.init(cr_addr, mr_addr, &|addr| nso.map_vatr(addr))?;
+
+    if let Ok(nso_exports) = nso.list_exported_symbols() {
+        il2cpp.exported_symbols = nso_exports.iter().map(|(n, _)| n.clone()).collect();
+        for (name, addr) in nso_exports {
+            if name.starts_with("il2cpp_") || name.starts_with("mono_") {
+                let rva = il2cpp.get_rva(addr);
+                il2cpp.api_export_rvas.insert(name, rva);
+            }
+        }
+    }
+    emit_log(
+        app,
+        &format!(
+            "Found {} exported symbols, {} IL2CPP APIs",
+            il2cpp.exported_symbols.len(),
+            il2cpp.api_export_rvas.len()
+        ),
+    );
+
     Ok(il2cpp)
 }
 
@@ -964,7 +1034,7 @@ fn run_dump(
 
     if config.generate_struct {
         emit_log(app, "Generating struct...");
-        StructGenerator::write_all(&mut executor, &mut metadata, &mut il2cpp, &final_output)
+        StructGenerator::write_all(&mut executor, &mut metadata, &mut il2cpp, config, &final_output)
             .map_err(|e| format!("{e}"))?;
         crate::output::embedded_scripts::write_scripts(std::path::Path::new(&final_output))
             .map_err(|e| format!("{e}"))?;

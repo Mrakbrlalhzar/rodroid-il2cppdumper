@@ -30,6 +30,12 @@ export interface DumperConfig {
   dumpDisassemblyAnnotations: boolean;
   dumpDisassemblyCfg: boolean;
   maxDisassemblyInstructions: number;
+  generateCppScaffold: boolean;
+  mangleNames: boolean;
+  enhancedIdaMetadata: boolean;
+  generateUnityHeaders: boolean;
+  compilerLayout: string;
+  useTopologicalSort: boolean;
 }
 
 export interface BinaryInfo {
@@ -81,4 +87,10 @@ export const DEFAULT_CONFIG: DumperConfig = {
   dumpDisassemblyAnnotations: true,
   dumpDisassemblyCfg: true,
   maxDisassemblyInstructions: 512,
+  generateCppScaffold: true,
+  mangleNames: true,
+  enhancedIdaMetadata: true,
+  generateUnityHeaders: true,
+  compilerLayout: "GCC",
+  useTopologicalSort: true,
 };

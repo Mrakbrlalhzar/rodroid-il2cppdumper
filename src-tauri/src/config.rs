@@ -35,6 +35,12 @@ pub struct Config {
     pub dump_disassembly_annotations: bool,
     pub dump_disassembly_cfg: bool,
     pub max_disassembly_instructions: usize,
+    pub generate_cpp_scaffold: bool,
+    pub mangle_names: bool,
+    pub enhanced_ida_metadata: bool,
+    pub generate_unity_headers: bool,
+    pub compiler_layout: String,
+    pub use_topological_sort: bool,
 }
 
 impl Default for Config {
@@ -72,6 +78,12 @@ impl Default for Config {
             dump_disassembly_annotations: true,
             dump_disassembly_cfg: true,
             max_disassembly_instructions: 512,
+            generate_cpp_scaffold: true,
+            mangle_names: true,
+            enhanced_ida_metadata: true,
+            generate_unity_headers: true,
+            compiler_layout: "GCC".to_string(),
+            use_topological_sort: true,
         }
     }
 }

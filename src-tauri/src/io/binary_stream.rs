@@ -1,6 +1,6 @@
-use crate::error::{Error, Result};
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use byteorder::{LittleEndian, BigEndian, ReadBytesExt, WriteBytesExt};
+use crate::error::{Error, Result};
 
 #[derive(Clone)]
 pub struct BinaryStream {
@@ -285,27 +285,19 @@ impl BinaryStream {
     }
 
     pub fn write_i32(&mut self, value: i32) -> Result<()> {
-        self.cursor
-            .write_i32::<LittleEndian>(value)
-            .map_err(Error::Io)
+        self.cursor.write_i32::<LittleEndian>(value).map_err(Error::Io)
     }
 
     pub fn write_u32(&mut self, value: u32) -> Result<()> {
-        self.cursor
-            .write_u32::<LittleEndian>(value)
-            .map_err(Error::Io)
+        self.cursor.write_u32::<LittleEndian>(value).map_err(Error::Io)
     }
 
     pub fn write_i64(&mut self, value: i64) -> Result<()> {
-        self.cursor
-            .write_i64::<LittleEndian>(value)
-            .map_err(Error::Io)
+        self.cursor.write_i64::<LittleEndian>(value).map_err(Error::Io)
     }
 
     pub fn write_u64(&mut self, value: u64) -> Result<()> {
-        self.cursor
-            .write_u64::<LittleEndian>(value)
-            .map_err(Error::Io)
+        self.cursor.write_u64::<LittleEndian>(value).map_err(Error::Io)
     }
 
     pub fn seek_to(&mut self, pos: u64) -> Result<()> {
@@ -314,9 +306,7 @@ impl BinaryStream {
     }
 
     pub fn seek_relative(&mut self, offset: i64) -> Result<()> {
-        self.cursor
-            .seek(SeekFrom::Current(offset))
-            .map_err(Error::Io)?;
+        self.cursor.seek(SeekFrom::Current(offset)).map_err(Error::Io)?;
         Ok(())
     }
 
@@ -326,12 +316,7 @@ impl BinaryStream {
         if off + 4 > data.len() {
             return Err(Error::OutOfBounds { offset, size: 4 });
         }
-        Ok(u32::from_le_bytes([
-            data[off],
-            data[off + 1],
-            data[off + 2],
-            data[off + 3],
-        ]))
+        Ok(u32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]))
     }
 
     pub fn peek_u64_at(&self, offset: u64) -> Result<u64> {
@@ -341,14 +326,8 @@ impl BinaryStream {
             return Err(Error::OutOfBounds { offset, size: 8 });
         }
         Ok(u64::from_le_bytes([
-            data[off],
-            data[off + 1],
-            data[off + 2],
-            data[off + 3],
-            data[off + 4],
-            data[off + 5],
-            data[off + 6],
-            data[off + 7],
+            data[off], data[off + 1], data[off + 2], data[off + 3],
+            data[off + 4], data[off + 5], data[off + 6], data[off + 7],
         ]))
     }
 
@@ -371,9 +350,7 @@ impl BinaryStream {
                 Ok(if v == u16::MAX { -1 } else { v as i32 })
             }
             4 => self.read_i32(),
-            _ => Err(crate::error::Error::Other(format!(
-                "Invalid variable index width: {width}"
-            ))),
+            _ => Err(crate::error::Error::Other(format!("Invalid variable index width: {width}"))),
         }
     }
 
@@ -381,10 +358,7 @@ impl BinaryStream {
         let s = start as usize;
         let data = self.cursor.get_ref();
         if s + len > data.len() {
-            return Err(Error::OutOfBounds {
-                offset: start,
-                size: len,
-            });
+            return Err(Error::OutOfBounds { offset: start, size: len });
         }
         Ok(&data[s..s + len])
     }
@@ -397,8 +371,10 @@ mod tests {
     #[test]
     fn test_read_primitives() {
         let data = vec![
-            0x42, 0x00, 0x01, 0x12, 0x34, 0x56, 0x78, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00,
+            0x42,
+            0x00, 0x01,
+            0x12, 0x34, 0x56, 0x78,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let mut stream = BinaryStream::new(data);
         assert_eq!(stream.read_u8().unwrap(), 0x42);
@@ -443,7 +419,9 @@ mod tests {
     #[test]
     fn test_read_array() {
         let data: Vec<u8> = vec![
-            0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00,
+            0x02, 0x00, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00,
         ];
         let mut stream = BinaryStream::new(data);
         let arr = stream.read_u32_array(0, 3).unwrap();

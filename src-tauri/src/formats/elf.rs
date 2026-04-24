@@ -1,8 +1,8 @@
+use std::collections::{HashMap, HashSet};
+use crate::io::BinaryStream;
+use crate::search::{SectionHelper, SearchSection};
 use crate::error::{Error, Result};
 use crate::il2cpp::structures::*;
-use crate::io::BinaryStream;
-use crate::search::{SearchSection, SectionHelper};
-use std::collections::HashMap;
 
 pub const PT_NULL: u32 = 0;
 pub const PT_LOAD: u32 = 1;
@@ -17,6 +17,7 @@ pub const DT_PLTGOT: i64 = 3;
 pub const DT_HASH: i64 = 4;
 pub const DT_STRTAB: i64 = 5;
 pub const DT_SYMTAB: i64 = 6;
+pub const DT_STRSZ: i64 = 10;
 pub const DT_RELA: i64 = 7;
 pub const DT_RELASZ: i64 = 8;
 pub const DT_INIT: i64 = 12;
@@ -36,6 +37,10 @@ pub const R_AARCH64_RELATIVE: u32 = 1027;
 pub const R_X86_64_64: u32 = 1;
 pub const R_X86_64_RELATIVE: u32 = 8;
 
+pub const SHT_SYMTAB: u32 = 2;
+pub const SHT_STRTAB: u32 = 3;
+pub const SHT_DYNSYM: u32 = 11;
+pub const SHN_UNDEF: u16 = 0;
 pub const SHT_LOUSER: u32 = 0x80000000;
 
 #[derive(Debug, Clone, Default)]
@@ -351,8 +356,7 @@ impl Elf {
             }
 
             let chains_base = buckets_address + 4 * nbuckets as u64;
-            self.stream
-                .set_position(chains_base + (last_symbol - symoffset) as u64 * 4);
+            self.stream.set_position(chains_base + (last_symbol - symoffset) as u64 * 4);
             let mut count = last_symbol;
             loop {
                 let chain_entry = self.stream.read_u32()?;
@@ -362,6 +366,22 @@ impl Elf {
                 }
             }
             return Ok(count as usize);
+        }
+
+        if let Some(symtab_entry) = self.find_dynamic_entry(DT_SYMTAB) {
+            let symtab_addr = symtab_entry.d_un;
+            let sym_entry_size = if self.is_32bit { 16u64 } else { 24 };
+            if let Some(next_addr) = self.dynamic.iter()
+                .filter(|e| e.d_un > symtab_addr && e.d_tag != DT_NULL)
+                .map(|e| e.d_un)
+                .min()
+            {
+                let table_size = next_addr.saturating_sub(symtab_addr);
+                let count = table_size / sym_entry_size;
+                if count > 0 {
+                    return Ok(count as usize);
+                }
+            }
         }
 
         Ok(0)
@@ -483,9 +503,7 @@ impl Elf {
     }
 
     fn fix_dynamic_section(&mut self) {
-        let fix_tags: &[i64] = &[
-            DT_PLTGOT, DT_HASH, DT_STRTAB, DT_SYMTAB, 7, DT_INIT, 13, DT_REL, 23, 25, 26,
-        ];
+        let fix_tags: &[i64] = &[DT_PLTGOT, DT_HASH, DT_STRTAB, DT_SYMTAB, 7, DT_INIT, 13, DT_REL, 23, 25, 26];
         for dyn_entry in &mut self.dynamic {
             if fix_tags.contains(&dyn_entry.d_tag) {
                 dyn_entry.d_un += self.stream.image_base;
@@ -521,6 +539,75 @@ impl Elf {
         self.stream.read_u32_array(offset, count as usize)
     }
 
+    pub fn list_exported_symbols(&mut self) -> Result<Vec<(String, u64)>> {
+        let mut exports = Vec::new();
+        let mut seen = HashSet::new();
+
+        for sh_type in [SHT_DYNSYM, SHT_SYMTAB] {
+            if let Some(idx) = self.sections.iter().position(|s| s.sh_type == sh_type) {
+                let sec = self.sections[idx].clone();
+                if sec.sh_entsize == 0 || sec.sh_size == 0 { continue; }
+                let count = sec.sh_size / sec.sh_entsize;
+                let strtab_idx = sec.sh_link as usize;
+                if strtab_idx >= self.sections.len() { continue; }
+                let strtab_offset = self.sections[strtab_idx].sh_offset;
+
+                self.stream.set_position(sec.sh_offset);
+                for _ in 0..count {
+                    let sym = if self.is_32bit {
+                        let st_name = self.stream.read_u32()?;
+                        let st_value = self.stream.read_u32()? as u64;
+                        let _st_size = self.stream.read_u32()?;
+                        let _st_info = self.stream.read_u8()?;
+                        let _st_other = self.stream.read_u8()?;
+                        let st_shndx = self.stream.read_u16()?;
+                        (st_name, st_value, st_shndx)
+                    } else {
+                        let st_name = self.stream.read_u32()?;
+                        let _st_info = self.stream.read_u8()?;
+                        let _st_other = self.stream.read_u8()?;
+                        let st_shndx = self.stream.read_u16()?;
+                        let st_value = self.stream.read_u64()?;
+                        let _st_size = self.stream.read_u64()?;
+                        (st_name, st_value, st_shndx)
+                    };
+                    if sym.1 == 0 || sym.2 == SHN_UNDEF { continue; }
+                    let name = match self.stream.read_string_to_null_at(strtab_offset + sym.0 as u64) {
+                        Ok(n) => n,
+                        Err(_) => continue,
+                    };
+                    if name.is_empty() || seen.contains(&name) { continue; }
+                    seen.insert(name.clone());
+                    exports.push((name, sym.1));
+                }
+            }
+        }
+
+        if exports.is_empty() {
+            let strtab_un = match self.find_dynamic_entry(DT_STRTAB) {
+                Some(e) => e.d_un,
+                None => return Ok(exports),
+            };
+            let dynstr_offset = match self.map_vatr(strtab_un) {
+                Ok(o) => o,
+                Err(_) => return Ok(exports),
+            };
+            let syms = self.symbols.clone();
+            for sym in &syms {
+                if sym.st_value == 0 || sym.st_shndx == SHN_UNDEF { continue; }
+                let name = match self.stream.read_string_to_null_at(dynstr_offset + sym.st_name as u64) {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+                if name.is_empty() || seen.contains(&name) { continue; }
+                seen.insert(name.clone());
+                exports.push((name, sym.st_value));
+            }
+        }
+
+        Ok(exports)
+    }
+
     pub fn symbol_search(&mut self) -> Result<Option<(u64, u64)>> {
         let strtab_un = match self.find_dynamic_entry(DT_STRTAB) {
             Some(e) => e.d_un,
@@ -532,9 +619,7 @@ impl Elf {
         let mut metadata_reg = 0u64;
 
         for sym in &self.symbols {
-            let name = self
-                .stream
-                .read_string_to_null_at(dynstr_offset + sym.st_name as u64)?;
+            let name = self.stream.read_string_to_null_at(dynstr_offset + sym.st_name as u64)?;
             if name == "g_CodeRegistration" {
                 code_reg = sym.st_value;
             } else if name == "g_MetadataRegistration" {
@@ -549,12 +634,7 @@ impl Elf {
         }
     }
 
-    pub fn get_section_helper(
-        &self,
-        method_count: usize,
-        type_definitions_count: usize,
-        image_count: usize,
-    ) -> SectionHelper<'_> {
+    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, image_count: usize) -> SectionHelper<'_> {
         let mut data_list = Vec::new();
         let mut exec_list = Vec::new();
         let mut all_sections = Vec::new();
@@ -635,10 +715,7 @@ impl Elf {
         if (self.header.e_shstrndx as usize) < self.sections.len() {
             let shstrndx = self.sections[self.header.e_shstrndx as usize].sh_offset;
             for section in &self.sections {
-                if let Ok(name) = self
-                    .stream
-                    .read_string_to_null_at(shstrndx + section.sh_name as u64)
-                {
+                if let Ok(name) = self.stream.read_string_to_null_at(shstrndx + section.sh_name as u64) {
                     if name == ".text" {
                         return false;
                     }
@@ -658,10 +735,7 @@ impl Elf {
         if let Some(strtab) = self.find_dynamic_entry(DT_STRTAB) {
             if let Ok(dynstr_offset) = self.map_vatr(strtab.d_un) {
                 for sym in &self.symbols {
-                    if let Ok(name) = self
-                        .stream
-                        .read_string_to_null_at(dynstr_offset + sym.st_name as u64)
-                    {
+                    if let Ok(name) = self.stream.read_string_to_null_at(dynstr_offset + sym.st_name as u64) {
                         if name == "JNI_OnLoad" {
                             println!("WARNING: find JNI_OnLoad");
                             return true;
@@ -692,11 +766,7 @@ impl Elf {
         self.metadata_usages_count = metadata_usages_count;
     }
 
-    pub fn init(
-        &mut self,
-        code_registration_addr: u64,
-        metadata_registration_addr: u64,
-    ) -> Result<()> {
+    pub fn init(&mut self, code_registration_addr: u64, metadata_registration_addr: u64) -> Result<()> {
         let version = self.stream.version;
 
         let cr_offset = self.map_vatr(code_registration_addr)?;
@@ -721,45 +791,31 @@ impl Elf {
         Ok(())
     }
 
-    fn load_pointers(
-        &mut self,
-        cr: &Il2CppCodeRegistration,
-        mr: &Il2CppMetadataRegistration,
-    ) -> Result<()> {
+    fn load_pointers(&mut self, cr: &Il2CppCodeRegistration, mr: &Il2CppMetadataRegistration) -> Result<()> {
         let version = self.stream.version;
 
         if cr.generic_method_pointers_count > 0 {
-            self.generic_method_pointers =
-                self.map_vatr_array(cr.generic_method_pointers, cr.generic_method_pointers_count)?;
+            self.generic_method_pointers = self.map_vatr_array(cr.generic_method_pointers, cr.generic_method_pointers_count)?;
         }
 
         if cr.invoker_pointers_count > 0 {
-            self.invoker_pointers =
-                self.map_vatr_array(cr.invoker_pointers, cr.invoker_pointers_count)?;
+            self.invoker_pointers = self.map_vatr_array(cr.invoker_pointers, cr.invoker_pointers_count)?;
         }
 
         if version < 27.0 && cr.custom_attribute_count > 0 {
-            self.custom_attribute_generators =
-                self.map_vatr_array(cr.custom_attribute_generators, cr.custom_attribute_count)?;
+            self.custom_attribute_generators = self.map_vatr_array(cr.custom_attribute_generators, cr.custom_attribute_count)?;
         }
 
         if version > 16.0 && version < 27.0 && self.metadata_usages_count > 0 {
-            self.metadata_usages =
-                self.map_vatr_array(mr.metadata_usages, self.metadata_usages_count)?;
+            self.metadata_usages = self.map_vatr_array(mr.metadata_usages, self.metadata_usages_count)?;
         }
 
         if version >= 22.0 && cr.reverse_pinvoke_wrapper_count > 0 {
-            self.reverse_pinvoke_wrappers = self.map_vatr_array(
-                cr.reverse_pinvoke_wrappers,
-                cr.reverse_pinvoke_wrapper_count,
-            )?;
+            self.reverse_pinvoke_wrappers = self.map_vatr_array(cr.reverse_pinvoke_wrappers, cr.reverse_pinvoke_wrapper_count)?;
         }
 
         if version >= 22.0 && cr.unresolved_virtual_call_count > 0 {
-            self.unresolved_virtual_call_pointers = self.map_vatr_array(
-                cr.unresolved_virtual_call_pointers,
-                cr.unresolved_virtual_call_count,
-            )?;
+            self.unresolved_virtual_call_pointers = self.map_vatr_array(cr.unresolved_virtual_call_pointers, cr.unresolved_virtual_call_count)?;
         }
 
         Ok(())
@@ -783,14 +839,9 @@ impl Elf {
 
         self.field_offsets_are_pointers = version > 21.0;
         if version == 21.0 && mr.field_offsets_count >= 6 {
-            let test =
-                self.map_vatr_array(mr.field_offsets, std::cmp::min(6, mr.field_offsets_count))?;
-            self.field_offsets_are_pointers = test[0] == 0
-                && test[1] == 0
-                && test[2] == 0
-                && test[3] == 0
-                && test[4] == 0
-                && test[5] > 0;
+            let test = self.map_vatr_array(mr.field_offsets, std::cmp::min(6, mr.field_offsets_count))?;
+            self.field_offsets_are_pointers = test[0] == 0 && test[1] == 0 && test[2] == 0 &&
+                test[3] == 0 && test[4] == 0 && test[5] > 0;
         }
 
         self.field_offsets = self.map_vatr_array(mr.field_offsets, mr.field_offsets_count)?;
@@ -801,15 +852,13 @@ impl Elf {
     fn load_generics(&mut self, mr: &Il2CppMetadataRegistration) -> Result<()> {
         let version = self.stream.version;
 
-        self.generic_inst_pointers =
-            self.map_vatr_array(mr.generic_insts, mr.generic_insts_count)?;
+        self.generic_inst_pointers = self.map_vatr_array(mr.generic_insts, mr.generic_insts_count)?;
 
         self.generic_insts.clear();
         for ptr in &self.generic_inst_pointers {
             let offset = self.map_vatr(*ptr)?;
             self.stream.set_position(offset);
-            self.generic_insts
-                .push(Il2CppGenericInst::read(&mut self.stream)?);
+            self.generic_insts.push(Il2CppGenericInst::read(&mut self.stream)?);
         }
 
         if mr.generic_method_table_count > 0 {
@@ -817,11 +866,7 @@ impl Elf {
             self.stream.set_position(offset);
             self.generic_method_table.clear();
             for _ in 0..mr.generic_method_table_count {
-                self.generic_method_table
-                    .push(Il2CppGenericMethodFunctionsDefinitions::read(
-                        &mut self.stream,
-                        version,
-                    )?);
+                self.generic_method_table.push(Il2CppGenericMethodFunctionsDefinitions::read(&mut self.stream, version)?);
             }
         }
 
@@ -830,8 +875,7 @@ impl Elf {
             self.stream.set_position(offset);
             self.method_specs.clear();
             for _ in 0..mr.method_specs_count {
-                self.method_specs
-                    .push(Il2CppMethodSpec::read(&mut self.stream)?);
+                self.method_specs.push(Il2CppMethodSpec::read(&mut self.stream)?);
             }
         }
 
@@ -848,9 +892,8 @@ impl Elf {
                     .or_default()
                     .push(table.generic_method_index as usize);
 
-                if table.indices.method_index >= 0
-                    && (table.indices.method_index as usize) < self.generic_method_pointers.len()
-                {
+                if table.indices.method_index >= 0 &&
+                    (table.indices.method_index as usize) < self.generic_method_pointers.len() {
                     self.method_spec_generic_method_pointers.insert(
                         table.generic_method_index as usize,
                         self.generic_method_pointers[table.indices.method_index as usize],
@@ -864,8 +907,7 @@ impl Elf {
 
     fn load_code_gen_modules(&mut self, cr: &Il2CppCodeRegistration) -> Result<()> {
         let version = self.stream.version;
-        let module_pointers =
-            self.map_vatr_array(cr.code_gen_modules, cr.code_gen_modules_count)?;
+        let module_pointers = self.map_vatr_array(cr.code_gen_modules, cr.code_gen_modules_count)?;
 
         for ptr in module_pointers {
             let offset = self.map_vatr(ptr)?;
@@ -881,8 +923,7 @@ impl Elf {
                 Vec::new()
             };
 
-            self.code_gen_module_method_pointers
-                .insert(module_name.clone(), method_ptrs);
+            self.code_gen_module_method_pointers.insert(module_name.clone(), method_ptrs);
 
             let mut rgctx_def_dic: HashMap<u32, Vec<Il2CppRGCTXDefinition>> = HashMap::new();
 
@@ -905,28 +946,19 @@ impl Elf {
                     let start = range_pair.range.start as usize;
                     let length = range_pair.range.length as usize;
                     if start + length <= rgctxs.len() {
-                        rgctx_def_dic
-                            .insert(range_pair.token, rgctxs[start..start + length].to_vec());
+                        rgctx_def_dic.insert(range_pair.token, rgctxs[start..start + length].to_vec());
                     }
                 }
             }
 
-            self.rgctxs_dictionary
-                .insert(module_name.clone(), rgctx_def_dic);
+            self.rgctxs_dictionary.insert(module_name.clone(), rgctx_def_dic);
             self.code_gen_modules.insert(module_name, module);
         }
 
         Ok(())
     }
 
-    pub fn get_field_offset_from_index(
-        &mut self,
-        type_index: usize,
-        field_index_in_type: usize,
-        field_index: usize,
-        is_value_type: bool,
-        is_static: bool,
-    ) -> i32 {
+    pub fn get_field_offset_from_index(&mut self, type_index: usize, field_index_in_type: usize, field_index: usize, is_value_type: bool, is_static: bool) -> i32 {
         let result = if self.field_offsets_are_pointers {
             if type_index >= self.field_offsets.len() {
                 return -1;
@@ -937,8 +969,7 @@ impl Elf {
             }
             match self.map_vatr(ptr) {
                 Ok(base) => {
-                    self.stream
-                        .set_position(base + (field_index_in_type as u64) * 4);
+                    self.stream.set_position(base + (field_index_in_type as u64) * 4);
                     self.stream.read_i32().unwrap_or(-1)
                 }
                 Err(_) => return -1,
@@ -958,12 +989,7 @@ impl Elf {
         }
     }
 
-    pub fn get_method_pointer(
-        &self,
-        image_name: &str,
-        method_token: u32,
-        method_index: i32,
-    ) -> u64 {
+    pub fn get_method_pointer(&self, image_name: &str, method_token: u32, method_index: i32) -> u64 {
         let version = self.stream.version;
         if version >= 24.2 {
             if let Some(ptrs) = self.code_gen_module_method_pointers.get(image_name) {
@@ -981,11 +1007,7 @@ impl Elf {
         0
     }
 
-    pub fn auto_plus_init(
-        &mut self,
-        code_reg: Option<u64>,
-        metadata_reg: Option<u64>,
-    ) -> Result<bool> {
+    pub fn auto_plus_init(&mut self, code_reg: Option<u64>, metadata_reg: Option<u64>) -> Result<bool> {
         let mut code_registration = code_reg.unwrap_or(0);
         let metadata_registration = metadata_reg.unwrap_or(0);
         let version = self.stream.version;
@@ -1034,9 +1056,7 @@ impl Elf {
 
         let got = self.find_dynamic_entry(DT_PLTGOT)?.d_un;
 
-        let exec_segments: Vec<(u64, u64)> = self
-            .segments
-            .iter()
+        let exec_segments: Vec<(u64, u64)> = self.segments.iter()
             .filter(|p| p.p_type == PT_LOAD && (p.p_flags & PF_X) != 0)
             .map(|p| (p.p_offset, p.p_filesz))
             .collect();
@@ -1046,12 +1066,9 @@ impl Elf {
         // ? 0x00 ? 0xE0  (ADD R0, X, X)
         // ? 0x20 ? 0xE0  (ADD R2, X, X)
         let pattern: [(usize, u8); 6] = [
-            (1, 0x10),
-            (3, 0xE7),
-            (5, 0x00),
-            (7, 0xE0),
-            (9, 0x20),
-            (11, 0xE0),
+            (1, 0x10), (3, 0xE7),
+            (5, 0x00), (7, 0xE0),
+            (9, 0x20), (11, 0xE0),
         ];
 
         let mut results: Vec<u64> = Vec::new();
@@ -1101,8 +1118,8 @@ impl Elf {
         } else {
             // version >= 24
             self.stream.set_position(result as u64 + 0x14);
-            let code_registration =
-                self.stream.read_u32().ok()? as u64 + result as u64 + 0xC + image_base as u64;
+            let code_registration = self.stream.read_u32().ok()? as u64
+                + result as u64 + 0xC + image_base as u64;
             self.stream.set_position(result as u64 + 0x10);
             let ptr = self.stream.read_u32().ok()? as u64 + result as u64 + 0x8;
             let ptr_offset = self.map_vatr(ptr + image_base as u64).ok()?;

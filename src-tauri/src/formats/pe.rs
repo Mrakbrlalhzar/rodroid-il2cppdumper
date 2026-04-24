@@ -1,6 +1,6 @@
-use crate::error::{Error, Result};
 use crate::io::BinaryStream;
-use crate::search::{SearchSection, SectionHelper};
+use crate::search::{SectionHelper, SearchSection};
+use crate::error::{Error, Result};
 
 pub const IMAGE_DOS_SIGNATURE: u16 = 0x5A4D;
 pub const IMAGE_NT_SIGNATURE: u32 = 0x00004550;
@@ -115,19 +115,13 @@ impl Pe {
 
         self.stream.image_base = self.image_base;
 
-        self.stream
-            .set_position(optional_header_start + size_of_optional_header as u64);
+        self.stream.set_position(optional_header_start + size_of_optional_header as u64);
         self.sections.clear();
         for _ in 0..number_of_sections {
             let name_bytes = self.stream.read_bytes(8)?;
             let name = String::from_utf8_lossy(
-                &name_bytes
-                    .iter()
-                    .copied()
-                    .take_while(|&b| b != 0)
-                    .collect::<Vec<u8>>(),
-            )
-            .to_string();
+                &name_bytes.iter().copied().take_while(|&b| b != 0).collect::<Vec<u8>>()
+            ).to_string();
 
             self.sections.push(PeSectionHeader {
                 name,
@@ -154,9 +148,7 @@ impl Pe {
             let start = section.virtual_address as u64;
             let end = start + section.virtual_size as u64;
             if addr >= start && addr < end {
-                return Ok(
-                    addr - section.virtual_address as u64 + section.pointer_to_raw_data as u64
-                );
+                return Ok(addr - section.virtual_address as u64 + section.pointer_to_raw_data as u64);
             }
         }
         Err(Error::AddressNotMapped(addr))
@@ -167,12 +159,55 @@ impl Pe {
             let start = section.pointer_to_raw_data as u64;
             let end = start + section.size_of_raw_data as u64;
             if addr >= start && addr < end {
-                return addr - section.pointer_to_raw_data as u64
-                    + section.virtual_address as u64
-                    + self.image_base;
+                return addr - section.pointer_to_raw_data as u64 + section.virtual_address as u64 + self.image_base;
             }
         }
         0
+    }
+
+    pub fn list_exported_symbols(&mut self) -> Result<Vec<(String, u64)>> {
+        let mut exports = Vec::new();
+        if self.data_directories.len() <= IMAGE_DIRECTORY_ENTRY_EXPORT {
+            return Ok(exports);
+        }
+        let export_dir = &self.data_directories[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if export_dir.virtual_address == 0 {
+            return Ok(exports);
+        }
+        let export_offset = self.map_vatr(export_dir.virtual_address as u64)?;
+        self.stream.set_position(export_offset);
+        let _characteristics = self.stream.read_u32()?;
+        let _time_date_stamp = self.stream.read_u32()?;
+        let _major_version = self.stream.read_u16()?;
+        let _minor_version = self.stream.read_u16()?;
+        let _name_rva = self.stream.read_u32()?;
+        let _base = self.stream.read_u32()?;
+        let _number_of_functions = self.stream.read_u32()?;
+        let number_of_names = self.stream.read_u32()?;
+        let address_of_functions = self.stream.read_u32()?;
+        let address_of_names = self.stream.read_u32()?;
+        let address_of_name_ordinals = self.stream.read_u32()?;
+        let names_offset = self.map_vatr(address_of_names as u64)?;
+        let ordinals_offset = self.map_vatr(address_of_name_ordinals as u64)?;
+        let functions_offset = self.map_vatr(address_of_functions as u64)?;
+        for i in 0..number_of_names {
+            self.stream.set_position(names_offset + i as u64 * 4);
+            let name_rva = self.stream.read_u32()?;
+            let name_offset = match self.map_vatr(name_rva as u64) {
+                Ok(o) => o,
+                Err(_) => continue,
+            };
+            let name = match self.stream.read_string_to_null_at(name_offset) {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+            self.stream.set_position(ordinals_offset + i as u64 * 2);
+            let ordinal = self.stream.read_u16()?;
+            self.stream.set_position(functions_offset + ordinal as u64 * 4);
+            let func_rva = self.stream.read_u32()?;
+            exports.push((name, func_rva as u64));
+        }
+        Ok(exports)
     }
 
     pub fn symbol_search(&mut self) -> Result<Option<(u64, u64)>> {
@@ -216,8 +251,7 @@ impl Pe {
             self.stream.set_position(ordinals_offset + i as u64 * 2);
             let ordinal = self.stream.read_u16()?;
 
-            self.stream
-                .set_position(functions_offset + ordinal as u64 * 4);
+            self.stream.set_position(functions_offset + ordinal as u64 * 4);
             let func_rva = self.stream.read_u32()?;
 
             if name == "g_CodeRegistration" {
@@ -234,14 +268,7 @@ impl Pe {
         }
     }
 
-    pub fn get_section_helper(
-        &self,
-        method_count: usize,
-        type_definitions_count: usize,
-        metadata_usages_count: usize,
-        image_count: usize,
-        version: f64,
-    ) -> SectionHelper<'_> {
+    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
         let mut data_list = Vec::new();
         let mut exec_list = Vec::new();
         let mut all_sections = Vec::new();
@@ -265,10 +292,13 @@ impl Pe {
             let is_data = (chars & IMAGE_SCN_CNT_INITIALIZED_DATA) != 0;
 
             if is_code && !is_data {
+
                 exec_list.push(search_section);
             } else if is_data && !is_code {
+
                 data_list.push(search_section);
             } else {
+
             }
         }
 

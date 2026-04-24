@@ -10,12 +10,7 @@ pub struct SearchSection {
 
 impl SearchSection {
     pub fn new(offset: u64, offset_end: u64, address: u64, address_end: u64) -> Self {
-        Self {
-            offset,
-            offset_end,
-            address,
-            address_end,
-        }
+        Self { offset, offset_end, address, address_end }
     }
 }
 
@@ -155,18 +150,10 @@ impl<'a> SectionHelper<'a> {
         self.find_code_registration_2019_with_feature(use_exec, b"System.Private.CoreLib.dll\x00")
     }
 
-    fn find_code_registration_2019_with_feature(
-        &self,
-        use_exec: &bool,
-        feature_bytes: &[u8],
-    ) -> Option<u64> {
+    fn find_code_registration_2019_with_feature(&self, use_exec: &bool, feature_bytes: &[u8]) -> Option<u64> {
         let ptr_size = self.ptr_size();
 
-        let sections = if *use_exec {
-            &self.code_sections
-        } else {
-            &self.data_sections
-        };
+        let sections = if *use_exec { &self.code_sections } else { &self.data_sections };
 
         for section in sections {
             let start = section.offset as usize;
@@ -186,8 +173,7 @@ impl<'a> SectionHelper<'a> {
 
                     for (_ref_offset2, ref_va2) in &refs2 {
                         if self.version >= 27.0 {
-                            let min_target =
-                                ref_va2 - (self.image_count as u64 - 1) * ptr_size as u64;
+                            let min_target = ref_va2 - (self.image_count as u64 - 1) * ptr_size as u64;
                             let max_target = *ref_va2;
 
                             let count_bytes = if self.is_32bit {
@@ -197,9 +183,7 @@ impl<'a> SectionHelper<'a> {
                             };
 
                             let mut start_search = 0usize;
-                            while let Some(idx) =
-                                find_bytes(&self.data[start_search..], &count_bytes)
-                            {
+                            while let Some(idx) = find_bytes(&self.data[start_search..], &count_bytes) {
                                 let abs_idx = start_search + idx;
                                 if abs_idx % ptr_size == 0 {
                                     let next_offset = abs_idx + ptr_size;
@@ -208,24 +192,14 @@ impl<'a> SectionHelper<'a> {
                                         if let Some(pv) = ptr_val {
                                             if pv >= min_target && pv <= max_target {
                                                 let i = (ref_va2 - pv) / ptr_size as u64;
-                                                if i < self.image_count as u64
-                                                    && pv == ref_va2 - i * ptr_size as u64
-                                                {
-                                                    if let Some(ref_va3) =
-                                                        self.offset_to_va(next_offset)
-                                                    {
+                                                if i < self.image_count as u64 && pv == ref_va2 - i * ptr_size as u64 {
+                                                    if let Some(ref_va3) = self.offset_to_va(next_offset) {
                                                         if self.version >= 29.1 {
-                                                            return Some(
-                                                                ref_va3 - ptr_size as u64 * 16,
-                                                            );
+                                                            return Some(ref_va3 - ptr_size as u64 * 16);
                                                         } else if self.version >= 29.0 {
-                                                            return Some(
-                                                                ref_va3 - ptr_size as u64 * 14,
-                                                            );
+                                                            return Some(ref_va3 - ptr_size as u64 * 14);
                                                         }
-                                                        return Some(
-                                                            ref_va3 - ptr_size as u64 * 13,
-                                                        );
+                                                        return Some(ref_va3 - ptr_size as u64 * 13);
                                                     }
                                                 }
                                             }
@@ -387,9 +361,7 @@ impl<'a> SectionHelper<'a> {
 
                                         if valid {
                                             let addr = start + abs_idx;
-                                            let result =
-                                                addr as u64 - ptr_size as u64 * 10 - section.offset
-                                                    + section.address;
+                                            let result = addr as u64 - ptr_size as u64 * 10 - section.offset + section.address;
                                             return Some(result);
                                         }
                                     }
@@ -467,21 +439,15 @@ impl<'a> SectionHelper<'a> {
     }
 
     fn is_in_data_sections(&self, addr: u64) -> bool {
-        self.data_sections
-            .iter()
-            .any(|s| addr >= s.address && addr <= s.address_end)
+        self.data_sections.iter().any(|s| addr >= s.address && addr <= s.address_end)
     }
 
     fn is_in_code_sections(&self, addr: u64) -> bool {
-        self.code_sections
-            .iter()
-            .any(|s| addr >= s.address && addr <= s.address_end)
+        self.code_sections.iter().any(|s| addr >= s.address && addr <= s.address_end)
     }
 
     fn is_in_bss_sections(&self, addr: u64) -> bool {
-        self.bss_sections
-            .iter()
-            .any(|s| addr >= s.address && addr <= s.address_end)
+        self.bss_sections.iter().any(|s| addr >= s.address && addr <= s.address_end)
     }
 
     fn _addr_to_offset(&self, addr: u64) -> Option<u64> {

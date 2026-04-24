@@ -1,3 +1,72 @@
+pub static CPP_RESERVED_KEYWORDS: &[&str] = &[
+    "klass", "monitor", "register", "_cs", "auto", "friend", "template",
+    "flat", "default", "_ds", "interrupt", "unsigned", "signed", "asm",
+    "if", "case", "break", "continue", "do", "new", "_", "short",
+    "union", "class", "namespace", "volatile", "const", "extern",
+    "static", "struct", "typedef", "enum", "return", "switch",
+    "goto", "void", "for", "while", "else", "sizeof", "this",
+    "public", "private", "protected", "operator", "true", "false",
+    "nullptr", "method",
+];
+
+pub static CPP_RESERVED_SPECIAL: &[&str] = &["inline", "near", "far"];
+
+pub static LIBC_RESERVED_NAMES: &[&str] = &[
+    "__sF", "__sE", "__sS", "__stdin", "__stdout", "__stderr",
+    "__cleanup", "__progname", "__environ", "errno",
+    "stdin", "stdout", "stderr",
+];
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NameSanitizerOptions {
+    pub allow_dollar: bool,
+    pub avoid_double_underscore_prefix: bool,
+}
+
+pub fn sanitize_cpp_identifier(name: &str, opts: NameSanitizerOptions) -> String {
+    if CPP_RESERVED_KEYWORDS.contains(&name) {
+        return format!("_{name}");
+    }
+    if CPP_RESERVED_SPECIAL.contains(&name) {
+        return format!("_{name}_");
+    }
+    let first = name.chars().next();
+    if first.map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return format!("_{name}");
+    }
+
+    let mut result = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || (opts.allow_dollar && c == '$') {
+            result.push(c);
+        } else {
+            result.push('_');
+        }
+    }
+
+    if opts.avoid_double_underscore_prefix && result.starts_with("__") {
+        result = format!("f{result}");
+    }
+
+    if LIBC_RESERVED_NAMES.contains(&result.as_str()) {
+        result = format!("_{result}_");
+    }
+
+    result
+}
+
+pub fn sanitize_mangled_identifier_chars(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    for c in id.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
 pub fn escape_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for ch in s.chars() {

@@ -1,7 +1,7 @@
 mod arm;
 mod x86;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,17 +56,9 @@ impl Architecture {
 
     pub fn from_bitness(is_32bit: bool, is_pe: bool) -> Self {
         if is_pe {
-            if is_32bit {
-                Architecture::X86
-            } else {
-                Architecture::X64
-            }
+            if is_32bit { Architecture::X86 } else { Architecture::X64 }
         } else {
-            if is_32bit {
-                Architecture::Arm32
-            } else {
-                Architecture::Arm64
-            }
+            if is_32bit { Architecture::Arm32 } else { Architecture::Arm64 }
         }
     }
 }
@@ -197,8 +189,7 @@ impl Disassembler {
             .replace('\t', "\\t")
             .replace('\0', "\\0");
         let truncated = if escaped.len() > 60 {
-            let safe_end = escaped
-                .char_indices()
+            let safe_end = escaped.char_indices()
                 .map(|(i, _)| i)
                 .take_while(|&i| i <= 57)
                 .last()
@@ -207,51 +198,34 @@ impl Disassembler {
         } else {
             escaped
         };
-        self.global_annotations.insert(
-            rva,
-            MetadataAnnotation {
-                kind: MetadataAnnotationKind::StringLiteral,
-                label: format!("\"{}\"", truncated),
-            },
-        );
+        self.global_annotations.insert(rva, MetadataAnnotation {
+            kind: MetadataAnnotationKind::StringLiteral,
+            label: format!("\"{}\"", truncated),
+        });
     }
 
     pub fn add_type_info(&mut self, rva: u64, type_name: String) {
-        self.global_annotations.insert(
-            rva,
-            MetadataAnnotation {
-                kind: MetadataAnnotationKind::TypeInfo,
-                label: format!("typeof({})", type_name),
-            },
-        );
+        self.global_annotations.insert(rva, MetadataAnnotation {
+            kind: MetadataAnnotationKind::TypeInfo,
+            label: format!("typeof({})", type_name),
+        });
     }
 
     pub fn add_method_ref(&mut self, rva: u64, full_name: String) {
-        self.global_annotations.insert(
-            rva,
-            MetadataAnnotation {
-                kind: MetadataAnnotationKind::MethodRef,
-                label: full_name,
-            },
-        );
+        self.global_annotations.insert(rva, MetadataAnnotation {
+            kind: MetadataAnnotationKind::MethodRef,
+            label: full_name,
+        });
     }
 
     pub fn add_field_ref(&mut self, rva: u64, full_name: String) {
-        self.global_annotations.insert(
-            rva,
-            MetadataAnnotation {
-                kind: MetadataAnnotationKind::FieldRef,
-                label: full_name,
-            },
-        );
+        self.global_annotations.insert(rva, MetadataAnnotation {
+            kind: MetadataAnnotationKind::FieldRef,
+            label: full_name,
+        });
     }
 
-    pub fn disassemble(
-        &self,
-        bytes: &[u8],
-        base_address: u64,
-        max_instructions: usize,
-    ) -> Vec<DisassembledInstruction> {
+    pub fn disassemble(&self, bytes: &[u8], base_address: u64, max_instructions: usize) -> Vec<DisassembledInstruction> {
         match self.arch {
             Architecture::Arm64 => arm::disassemble_arm64(bytes, base_address, max_instructions),
             Architecture::Arm32 => arm::disassemble_arm32(bytes, base_address, max_instructions),
@@ -315,7 +289,10 @@ impl Disassembler {
         for (idx, insn) in instructions.iter().enumerate() {
             if let Some(ref cfg) = cfg {
                 if let Some(block_header) = cfg.block_headers.get(&insn.address) {
-                    buf.push_str(&format!("{indent}\t\t   // {}\n", block_header,));
+                    buf.push_str(&format!(
+                        "{indent}\t\t   // {}\n",
+                        block_header,
+                    ));
                 }
             }
 
@@ -326,7 +303,10 @@ impl Disassembler {
                     insn.address, hex, insn
                 ));
             } else {
-                buf.push_str(&format!("{indent}\t\t   0x{:08X}:  {}", insn.address, insn));
+                buf.push_str(&format!(
+                    "{indent}\t\t   0x{:08X}:  {}",
+                    insn.address, insn
+                ));
             }
 
             let mut annotated = false;
@@ -334,20 +314,33 @@ impl Disassembler {
             if show_annotations {
                 if let Some(target) = insn.call_target {
                     if let Some(name) = self.rva_to_name.get(&target) {
-                        buf.push_str(&format!("  // -> {name}"));
+                        buf.push_str(&format!("  // CALL → {name}"));
                         annotated = true;
                     } else if let Some(ann) = self.global_annotations.get(&target) {
-                        buf.push_str(&format!("  // -> {}", ann.label));
+                        buf.push_str(&format!("  // CALL → {}", ann.label));
+                        annotated = true;
+                    } else {
+                        buf.push_str(&format!("  // CALL → sub_{:X}", target));
                         annotated = true;
                     }
                 }
             }
 
             if !annotated && insn.is_branch && !insn.is_call && !insn.is_return {
-                if let Some(ref cfg) = cfg {
-                    if let Some(edge_label) = cfg.edge_labels.get(&insn.address) {
-                        buf.push_str(&format!("  // {}", edge_label));
-                        annotated = true;
+                if let Some(target) = insn.branch_target {
+                    if insn.is_unconditional_branch {
+                        if let Some(name) = self.rva_to_name.get(&target) {
+                            buf.push_str(&format!("  // TAIL CALL → {name}"));
+                            annotated = true;
+                        }
+                    }
+                }
+                if !annotated {
+                    if let Some(ref cfg) = cfg {
+                        if let Some(edge_label) = cfg.edge_labels.get(&insn.address) {
+                            buf.push_str(&format!("  // {}", edge_label));
+                            annotated = true;
+                        }
                     }
                 }
             }
@@ -357,8 +350,7 @@ impl Disassembler {
                 adrp_page = page;
             }
 
-            if !annotated && show_annotations && (insn.mnemonic == "LDR" || insn.mnemonic == "ADD")
-            {
+            if !annotated && show_annotations && (insn.mnemonic == "LDR" || insn.mnemonic == "ADD") {
                 if let Some(page_base) = adrp_page {
                     if let Some(offset) = insn.memory_offset {
                         let full_addr = page_base.wrapping_add(offset as u64);
@@ -418,10 +410,8 @@ impl Disassembler {
                 }
             }
 
-            if insn.mnemonic == "CMP"
-                || insn.mnemonic == "TST"
-                || insn.mnemonic == "TEST"
-                || insn.mnemonic == "SUBS"
+            if insn.mnemonic == "CMP" || insn.mnemonic == "TST"
+                || insn.mnemonic == "TEST" || insn.mnemonic == "SUBS"
                 || insn.mnemonic == "CCMP"
             {
                 _last_cmp_operands = Some(insn.operands.clone());
@@ -432,7 +422,10 @@ impl Disassembler {
             if let Some(ref cfg) = cfg {
                 if insn.is_branch && !insn.is_call {
                     if let Some(separator) = cfg.block_separators.get(&insn.address) {
-                        buf.push_str(&format!("{indent}\t\t   // {}\n", separator,));
+                        buf.push_str(&format!(
+                            "{indent}\t\t   // {}\n",
+                            separator,
+                        ));
                     }
                 }
             }
@@ -467,10 +460,7 @@ struct BlockInfo {
 }
 
 impl CfgAnalysis {
-    fn build(
-        instructions: &[DisassembledInstruction],
-        reg_names: Option<&HashMap<String, String>>,
-    ) -> Self {
+    fn build(instructions: &[DisassembledInstruction], reg_names: Option<&HashMap<String, String>>) -> Self {
         if instructions.is_empty() {
             return Self {
                 blocks: Vec::new(),
@@ -491,10 +481,8 @@ impl CfgAnalysis {
         let mut last_cmp: Option<String> = None;
 
         for (_idx, insn) in instructions.iter().enumerate() {
-            if insn.mnemonic == "CMP"
-                || insn.mnemonic == "TST"
-                || insn.mnemonic == "TEST"
-                || insn.mnemonic == "SUBS"
+            if insn.mnemonic == "CMP" || insn.mnemonic == "TST"
+                || insn.mnemonic == "TEST" || insn.mnemonic == "SUBS"
                 || insn.mnemonic == "CCMP"
             {
                 last_cmp = Some(resolve_operands_with_names(&insn.operands, reg_names));
@@ -558,9 +546,7 @@ impl CfgAnalysis {
 
         let mut blocks: Vec<BlockInfo> = Vec::new();
         for (id, &start) in sorted_starts.iter().enumerate() {
-            let end = sorted_starts
-                .get(id + 1)
-                .copied()
+            let end = sorted_starts.get(id + 1).copied()
                 .unwrap_or(last_addr + instructions.last().unwrap().size as u64);
             blocks.push(BlockInfo {
                 _start_addr: start,
@@ -576,21 +562,17 @@ impl CfgAnalysis {
         let mut edge_labels: HashMap<u64, String> = HashMap::new();
 
         if blocks.len() > 1 {
-            block_headers.insert(
-                first_addr,
-                format!("═══ Block 0 (entry) {}", "═".repeat(30)),
-            );
+            block_headers.insert(first_addr, format!(
+                "═══ Block 0 (entry) {}",
+                "═".repeat(30)
+            ));
         }
 
         for (target_addr, edges) in &branch_targets {
-            if *target_addr == first_addr {
-                continue;
-            }
+            if *target_addr == first_addr { continue; }
 
             let block_idx = sorted_starts.iter().position(|a| *a == *target_addr);
-            let block_label = block_idx
-                .map(|i| format!("Block {}", i))
-                .unwrap_or_default();
+            let block_label = block_idx.map(|i| format!("Block {}", i)).unwrap_or_default();
 
             let mut header_parts: Vec<String> = Vec::new();
             let mut has_back_edge = false;
@@ -611,11 +593,7 @@ impl CfgAnalysis {
                     "──── ↑ loop target ({}) {} (from 0x{:X})",
                     header_parts.first().unwrap_or(&String::new()),
                     "─".repeat(20),
-                    edges
-                        .iter()
-                        .find(|e| e.is_back_edge)
-                        .map(|e| e.from_addr)
-                        .unwrap_or(0),
+                    edges.iter().find(|e| e.is_back_edge).map(|e| e.from_addr).unwrap_or(0),
                 );
                 block_headers.insert(*target_addr, header);
             } else if header_parts.len() == 1 {
@@ -635,20 +613,20 @@ impl CfgAnalysis {
                 );
                 block_headers.insert(*target_addr, header);
             } else {
-                let header = format!("──── {} {}", block_label, "─".repeat(30),);
+                let header = format!(
+                    "──── {} {}",
+                    block_label,
+                    "─".repeat(30),
+                );
                 block_headers.insert(*target_addr, header);
             }
         }
 
         for insn in instructions {
-            if !insn.is_branch || insn.is_call || insn.is_return {
-                continue;
-            }
+            if !insn.is_branch || insn.is_call || insn.is_return { continue; }
 
             if let Some(target) = insn.branch_target {
-                if !addr_set.contains(&target) {
-                    continue;
-                }
+                if !addr_set.contains(&target) { continue; }
 
                 let is_back_edge = target <= insn.address;
 
@@ -664,11 +642,7 @@ impl CfgAnalysis {
 
             if insn.condition_code.is_some() && !insn.is_unconditional_branch {
                 let sep_addr = insn.address;
-                if insn
-                    .branch_target
-                    .map(|t| t > insn.address)
-                    .unwrap_or(false)
-                {
+                if insn.branch_target.map(|t| t > insn.address).unwrap_or(false) {
                     block_separators.insert(sep_addr, String::new());
                 }
             }
@@ -679,9 +653,8 @@ impl CfgAnalysis {
         if blocks.len() > 1 && has_ret_in_last {
             for insn in instructions.iter().rev() {
                 if insn.is_return {
-                    if insn.address >= last_block_entry
-                        && !block_headers.contains_key(&insn.address)
-                    {}
+                    if insn.address >= last_block_entry && !block_headers.contains_key(&insn.address) {
+                    }
                     break;
                 }
             }
@@ -714,10 +687,7 @@ fn resolve_reg(reg: &str, reg_names: Option<&HashMap<String, String>>) -> String
     reg.to_string()
 }
 
-fn resolve_operands_with_names(
-    operands: &str,
-    reg_names: Option<&HashMap<String, String>>,
-) -> String {
+fn resolve_operands_with_names(operands: &str, reg_names: Option<&HashMap<String, String>>) -> String {
     let names = match reg_names {
         Some(n) if !n.is_empty() => n,
         _ => return operands.to_string(),
@@ -894,82 +864,42 @@ fn negate_operator(op: &str) -> &str {
     }
 }
 
-fn build_branch_label(
-    insn: &DisassembledInstruction,
-    cond: &str,
-    reg_names: Option<&HashMap<String, String>>,
-) -> String {
+fn build_branch_label(insn: &DisassembledInstruction, cond: &str, reg_names: Option<&HashMap<String, String>>) -> String {
     match insn.mnemonic.as_str() {
         "CBZ" => {
             let reg = insn.operands.split(',').next().unwrap_or("?").trim();
             let name = resolve_reg(reg, reg_names);
-            format!(
-                "if ({} == null) goto 0x{:08X}",
-                name,
-                insn.branch_target.unwrap_or(0)
-            )
+            format!("if ({} == null) goto 0x{:08X}", name, insn.branch_target.unwrap_or(0))
         }
         "CBNZ" => {
             let reg = insn.operands.split(',').next().unwrap_or("?").trim();
             let name = resolve_reg(reg, reg_names);
-            format!(
-                "if ({} != null) goto 0x{:08X}",
-                name,
-                insn.branch_target.unwrap_or(0)
-            )
+            format!("if ({} != null) goto 0x{:08X}", name, insn.branch_target.unwrap_or(0))
         }
         "TBZ" => {
             let parts: Vec<&str> = insn.operands.splitn(3, ',').collect();
             let reg = parts.first().map(|s| s.trim()).unwrap_or("?");
             let name = resolve_reg(reg, reg_names);
-            let bit = parts
-                .get(1)
-                .map(|s| s.trim().trim_start_matches('#'))
-                .unwrap_or("0");
+            let bit = parts.get(1).map(|s| s.trim().trim_start_matches('#')).unwrap_or("0");
             if bit == "0" {
-                format!(
-                    "if (!{}.initialized) goto 0x{:08X}",
-                    name,
-                    insn.branch_target.unwrap_or(0)
-                )
+                format!("if (!{}.initialized) goto 0x{:08X}", name, insn.branch_target.unwrap_or(0))
             } else {
-                format!(
-                    "if (bit{} of {} == 0) goto 0x{:08X}",
-                    bit,
-                    name,
-                    insn.branch_target.unwrap_or(0)
-                )
+                format!("if (bit{} of {} == 0) goto 0x{:08X}", bit, name, insn.branch_target.unwrap_or(0))
             }
         }
         "TBNZ" => {
             let parts: Vec<&str> = insn.operands.splitn(3, ',').collect();
             let reg = parts.first().map(|s| s.trim()).unwrap_or("?");
             let name = resolve_reg(reg, reg_names);
-            let bit = parts
-                .get(1)
-                .map(|s| s.trim().trim_start_matches('#'))
-                .unwrap_or("0");
+            let bit = parts.get(1).map(|s| s.trim().trim_start_matches('#')).unwrap_or("0");
             if bit == "0" {
-                format!(
-                    "if ({}.initialized) goto 0x{:08X}",
-                    name,
-                    insn.branch_target.unwrap_or(0)
-                )
+                format!("if ({}.initialized) goto 0x{:08X}", name, insn.branch_target.unwrap_or(0))
             } else {
-                format!(
-                    "if (bit{} of {} != 0) goto 0x{:08X}",
-                    bit,
-                    name,
-                    insn.branch_target.unwrap_or(0)
-                )
+                format!("if (bit{} of {} != 0) goto 0x{:08X}", bit, name, insn.branch_target.unwrap_or(0))
             }
         }
         _ => {
-            format!(
-                "if ({}) goto 0x{:08X}",
-                cond,
-                insn.branch_target.unwrap_or(0)
-            )
+            format!("if ({}) goto 0x{:08X}", cond, insn.branch_target.unwrap_or(0))
         }
     }
 }
@@ -986,29 +916,21 @@ fn extract_adrp_page(insn: &DisassembledInstruction) -> Option<u64> {
     let operands = &insn.operands;
     if let Some(dollar_pos) = operands.find("$+") {
         let after = &operands[dollar_pos + 2..];
-        let hex_str = after
-            .trim()
-            .trim_start_matches("0x")
-            .trim_start_matches("0X");
+        let hex_str = after.trim().trim_start_matches("0x").trim_start_matches("0X");
         if let Ok(offset) = u64::from_str_radix(hex_str, 16) {
             return Some(insn.address.wrapping_add(offset));
         }
     }
     if let Some(dollar_pos) = operands.find("$-") {
         let after = &operands[dollar_pos + 2..];
-        let hex_str = after
-            .trim()
-            .trim_start_matches("0x")
-            .trim_start_matches("0X");
+        let hex_str = after.trim().trim_start_matches("0x").trim_start_matches("0X");
         if let Ok(offset) = u64::from_str_radix(hex_str, 16) {
             return Some(insn.address.wrapping_sub(offset));
         }
     }
     if let Some(hash_pos) = operands.find("#0x") {
         let after = &operands[hash_pos + 3..];
-        let end = after
-            .find(|c: char| !c.is_ascii_hexdigit())
-            .unwrap_or(after.len());
+        let end = after.find(|c: char| !c.is_ascii_hexdigit()).unwrap_or(after.len());
         if let Ok(val) = u64::from_str_radix(&after[..end], 16) {
             return Some(val);
         }

@@ -68,6 +68,40 @@
         <Separator />
 
         <section>
+          <p class="text-[10px] font-bold uppercase tracking-[0.15em] text-primary mb-3">{$t.label_cpp_headers}</p>
+          <div class="space-y-3">
+            {#each [
+              { label: $t.setting_generate_cpp_scaffold, key: "generateCppScaffold" },
+              { label: $t.setting_mangle_names, key: "mangleNames" },
+              { label: $t.setting_enhanced_ida_metadata, key: "enhancedIdaMetadata" },
+              { label: $t.setting_generate_unity_headers, key: "generateUnityHeaders" },
+              { label: $t.setting_use_topological_sort, key: "useTopologicalSort" },
+            ] as item}
+              <div class="flex items-center justify-between">
+                <Label class="text-sm font-normal cursor-pointer">{item.label}</Label>
+                <Switch checked={config[item.key]} onCheckedChange={(v) => config[item.key] = v} />
+              </div>
+            {/each}
+            <div class="space-y-2">
+              <Label class="text-xs text-muted-foreground">{$t.setting_compiler_layout}</Label>
+              <div class="flex rounded-lg overflow-hidden border border-border">
+                {#each [$t.layout_gcc, $t.layout_msvc] as layout, i}
+                  <button
+                    class="flex-1 py-1.5 text-xs font-medium transition-all cursor-pointer
+                      {config.compilerLayout === (i === 0 ? 'GCC' : 'MSVC')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50'}"
+                    onclick={() => config.compilerLayout = i === 0 ? 'GCC' : 'MSVC'}
+                  >{layout}</button>
+                {/each}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Separator />
+
+        <section>
           <p class="text-[10px] font-bold uppercase tracking-[0.15em] text-primary mb-3">{$t.label_disassembly}</p>
           <div class="space-y-3">
             <div class="flex items-center justify-between">

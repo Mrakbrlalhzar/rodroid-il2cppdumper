@@ -1,8 +1,8 @@
-use crate::error::Result;
-use crate::io::BinaryStream;
-use crate::read_versioned;
 use std::cell::RefCell;
 use std::fmt;
+use crate::io::BinaryStream;
+use crate::error::Result;
+use crate::read_versioned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnityVersion {
@@ -22,20 +22,8 @@ pub enum UnityBuildType {
 }
 
 impl UnityVersion {
-    pub fn new(
-        major: u32,
-        minor: u32,
-        patch: u32,
-        build_type: UnityBuildType,
-        build_number: u32,
-    ) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-            build_type,
-            build_number,
-        }
+    pub fn new(major: u32, minor: u32, patch: u32, build_type: UnityBuildType, build_number: u32) -> Self {
+        Self { major, minor, patch, build_type, build_number }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -73,23 +61,11 @@ impl UnityVersion {
             }
         }
 
-        Some(Self {
-            major,
-            minor,
-            patch,
-            build_type,
-            build_number,
-        })
+        Some(Self { major, minor, patch, build_type, build_number })
     }
 
     pub fn gte(&self, major: u32, minor: u32, patch: u32, bt: UnityBuildType, bn: u32) -> bool {
-        let lhs = (
-            self.major,
-            self.minor,
-            self.patch,
-            self.build_type as u32,
-            self.build_number,
-        );
+        let lhs = (self.major, self.minor, self.patch, self.build_type as u32, self.build_number);
         let rhs = (major, minor, patch, bt as u32, bn);
         lhs >= rhs
     }
@@ -165,11 +141,7 @@ impl fmt::Display for UnityVersion {
             UnityBuildType::Final => 'f',
             UnityBuildType::Patch => 'p',
         };
-        write!(
-            f,
-            "{}.{}.{}{}{}",
-            self.major, self.minor, self.patch, t, self.build_number
-        )
+        write!(f, "{}.{}.{}{}{}", self.major, self.minor, self.patch, t, self.build_number)
     }
 }
 
@@ -242,18 +214,10 @@ pub struct IndexWidths {
 impl Default for IndexWidths {
     fn default() -> Self {
         Self {
-            type_def: 4,
-            generic_container: 4,
-            type_index: 4,
-            parameter_def: 4,
-            interface_offset: 4,
-            event: 4,
-            property: 4,
-            nested_type: 4,
-            method: 4,
-            generic_param: 4,
-            field: 4,
-            default_value_data: 4,
+            type_def: 4, generic_container: 4, type_index: 4,
+            parameter_def: 4, interface_offset: 4, event: 4,
+            property: 4, nested_type: 4, method: 4,
+            generic_param: 4, field: 4, default_value_data: 4,
         }
     }
 }
@@ -264,71 +228,25 @@ impl IndexWidths {
             return Self::default();
         }
         fn w(count: i32) -> u8 {
-            if count <= 0 {
-                4
-            } else if count <= 255 {
-                1
-            } else if count <= 65535 {
-                2
-            } else {
-                4
-            }
+            if count <= 0 { 4 } else if count <= 255 { 1 } else if count <= 65535 { 2 } else { 4 }
         }
         let type_index = if h.interface_offsets_count > 0 && h.interface_offsets_size > 0 {
             let bpe = h.interface_offsets_size / h.interface_offsets_count;
             if bpe > 4 { (bpe - 4) as u8 } else { 4 }
-        } else {
-            4
-        };
+        } else { 4 };
         Self {
             type_def: w(h.type_definitions_count),
             generic_container: w(h.generic_containers_count),
             type_index,
-            parameter_def: if version >= 39.0 {
-                w(h.parameters_count)
-            } else {
-                4
-            },
-            interface_offset: if version >= 104.0 {
-                w(h.interface_offsets_count)
-            } else {
-                4
-            },
-            event: if version >= 104.0 {
-                w(h.events_count)
-            } else {
-                4
-            },
-            property: if version >= 104.0 {
-                w(h.properties_count)
-            } else {
-                4
-            },
-            nested_type: if version >= 104.0 {
-                w(h.nested_types_count)
-            } else {
-                4
-            },
-            method: if version >= 105.0 {
-                w(h.methods_count)
-            } else {
-                4
-            },
-            generic_param: if version >= 106.0 {
-                w(h.generic_parameters_count)
-            } else {
-                4
-            },
-            field: if version >= 106.0 {
-                w(h.fields_count)
-            } else {
-                4
-            },
-            default_value_data: if version >= 106.0 {
-                w(h.field_and_parameter_default_value_data_count)
-            } else {
-                4
-            },
+            parameter_def: if version >= 39.0 { w(h.parameters_count) } else { 4 },
+            interface_offset: if version >= 104.0 { w(h.interface_offsets_count) } else { 4 },
+            event: if version >= 104.0 { w(h.events_count) } else { 4 },
+            property: if version >= 104.0 { w(h.properties_count) } else { 4 },
+            nested_type: if version >= 104.0 { w(h.nested_types_count) } else { 4 },
+            method: if version >= 105.0 { w(h.methods_count) } else { 4 },
+            generic_param: if version >= 106.0 { w(h.generic_parameters_count) } else { 4 },
+            field: if version >= 106.0 { w(h.fields_count) } else { 4 },
+            default_value_data: if version >= 106.0 { w(h.field_and_parameter_default_value_data_count) } else { 4 },
         }
     }
 
@@ -350,54 +268,18 @@ pub fn set_index_widths(widths: IndexWidths) {
     INDEX_WIDTHS.with(|w| *w.borrow_mut() = widths);
 }
 
-#[inline(always)]
-fn read_type_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().type_index))
-}
-#[inline(always)]
-fn read_type_def_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().type_def))
-}
-#[inline(always)]
-fn read_gc_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().generic_container))
-}
-#[inline(always)]
-fn read_param_def_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().parameter_def))
-}
-#[inline(always)]
-fn read_ioffset_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().interface_offset))
-}
-#[inline(always)]
-fn read_event_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().event))
-}
-#[inline(always)]
-fn read_property_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().property))
-}
-#[inline(always)]
-fn read_nested_type_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().nested_type))
-}
-#[inline(always)]
-fn read_method_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().method))
-}
-#[inline(always)]
-fn read_gp_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().generic_param))
-}
-#[inline(always)]
-fn read_field_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().field))
-}
-#[inline(always)]
-fn read_dvdata_idx(s: &mut BinaryStream) -> Result<i32> {
-    INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().default_value_data))
-}
+#[inline(always)] fn read_type_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().type_index)) }
+#[inline(always)] fn read_type_def_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().type_def)) }
+#[inline(always)] fn read_gc_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().generic_container)) }
+#[inline(always)] fn read_param_def_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().parameter_def)) }
+#[inline(always)] fn read_ioffset_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().interface_offset)) }
+#[inline(always)] fn read_event_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().event)) }
+#[inline(always)] fn read_property_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().property)) }
+#[inline(always)] fn read_nested_type_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().nested_type)) }
+#[inline(always)] fn read_method_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().method)) }
+#[inline(always)] fn read_gp_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().generic_param)) }
+#[inline(always)] fn read_field_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().field)) }
+#[inline(always)] fn read_dvdata_idx(s: &mut BinaryStream) -> Result<i32> { INDEX_WIDTHS.with(|iw| s.read_variable_index(iw.borrow().default_value_data)) }
 
 #[derive(Debug, Clone, Default)]
 pub struct Il2CppGlobalMetadataHeader {
@@ -514,11 +396,7 @@ impl Il2CppGlobalMetadataHeader {
         let (methods_offset, methods_size, methods_count) = sec!();
         let (parameter_default_values_offset, parameter_default_values_size, _) = sec!();
         let (field_default_values_offset, field_default_values_size, _) = sec!();
-        let (
-            field_and_parameter_default_value_data_offset,
-            field_and_parameter_default_value_data_size,
-            field_and_parameter_default_value_data_count,
-        ) = sec!();
+        let (field_and_parameter_default_value_data_offset, field_and_parameter_default_value_data_size, field_and_parameter_default_value_data_count) = sec!();
         let (field_marshaled_sizes_offset, field_marshaled_sizes_size, _) = sec!();
         let (parameters_offset, parameters_size, parameters_count) = sec!();
         let (fields_offset, fields_size, fields_count) = sec!();
@@ -530,161 +408,73 @@ impl Il2CppGlobalMetadataHeader {
         let (vtable_methods_offset, vtable_methods_size, _) = sec!();
         let (interface_offsets_offset, interface_offsets_size, interface_offsets_count) = sec!();
         let (type_definitions_offset, type_definitions_size, type_definitions_count) = sec!();
-        let (type_inline_arrays_offset, type_inline_arrays_size, type_inline_arrays_count) =
-            if version >= 104.0 { sec!() } else { (0, 0, 0) };
-        let (rgctx_entries_offset, rgctx_entries_count) = if version <= 24.15 {
-            let (o, s, _) = sec!();
-            (o, s)
-        } else {
-            (0, 0)
-        };
+        let (type_inline_arrays_offset, type_inline_arrays_size, type_inline_arrays_count) = if version >= 104.0 { sec!() } else { (0, 0, 0) };
+        let (rgctx_entries_offset, rgctx_entries_count) = if version <= 24.15 { let (o, s, _) = sec!(); (o, s) } else { (0, 0) };
         let (images_offset, images_size, _) = sec!();
         let (assemblies_offset, assemblies_size, _) = sec!();
-        let (metadata_usage_lists_offset, metadata_usage_lists_count) = if version < 27.0 {
-            let (o, s, _) = sec!();
-            (o, s)
-        } else {
-            (0, 0)
-        };
-        let (metadata_usage_pairs_offset, metadata_usage_pairs_count) = if version < 27.0 {
-            let (o, s, _) = sec!();
-            (o, s)
-        } else {
-            (0, 0)
-        };
+        let (metadata_usage_lists_offset, metadata_usage_lists_count) = if version < 27.0 { let (o, s, _) = sec!(); (o, s) } else { (0, 0) };
+        let (metadata_usage_pairs_offset, metadata_usage_pairs_count) = if version < 27.0 { let (o, s, _) = sec!(); (o, s) } else { (0, 0) };
         let (field_refs_offset, field_refs_size, _) = sec!();
         let (referenced_assemblies_offset, referenced_assemblies_size, _) = sec!();
-        let (
-            attributes_info_offset,
-            attributes_info_count,
-            attribute_types_offset,
-            attribute_types_count,
-            attribute_data_offset,
-            attribute_data_size,
-            attribute_data_range_offset,
-            attribute_data_range_size,
-        ) = if version < 29.0 {
-            let (ao, ac, _) = sec!();
-            let (to, tc, _) = sec!();
-            (ao, ac, to, tc, 0, 0, 0, 0)
-        } else {
-            let (ddo, dds, _) = sec!();
-            let (dro, drs, _) = sec!();
-            (0, 0, 0, 0, ddo, dds, dro, drs)
-        };
-        let (
-            unresolved_virtual_call_parameter_types_offset,
-            unresolved_virtual_call_parameter_types_size,
-            _,
-        ) = sec!();
-        let (
-            unresolved_virtual_call_parameter_ranges_offset,
-            unresolved_virtual_call_parameter_ranges_size,
-            _,
-        ) = sec!();
+        let (attributes_info_offset, attributes_info_count, attribute_types_offset, attribute_types_count,
+             attribute_data_offset, attribute_data_size, attribute_data_range_offset, attribute_data_range_size) =
+            if version < 29.0 {
+                let (ao, ac, _) = sec!();
+                let (to, tc, _) = sec!();
+                (ao, ac, to, tc, 0, 0, 0, 0)
+            } else {
+                let (ddo, dds, _) = sec!();
+                let (dro, drs, _) = sec!();
+                (0, 0, 0, 0, ddo, dds, dro, drs)
+            };
+        let (unresolved_virtual_call_parameter_types_offset, unresolved_virtual_call_parameter_types_size, _) = sec!();
+        let (unresolved_virtual_call_parameter_ranges_offset, unresolved_virtual_call_parameter_ranges_size, _) = sec!();
         let (windows_runtime_type_names_offset, windows_runtime_type_names_size, _) = sec!();
-        let (windows_runtime_strings_offset, windows_runtime_strings_size) = if version >= 27.0 {
-            let (o, s, _) = sec!();
-            (o, s)
-        } else {
-            (0, 0)
-        };
-        let (exported_type_definitions_offset, exported_type_definitions_size) = if version >= 24.0
-        {
-            let (o, s, _) = sec!();
-            (o, s)
-        } else {
-            (0, 0)
-        };
+        let (windows_runtime_strings_offset, windows_runtime_strings_size) = if version >= 27.0 { let (o, s, _) = sec!(); (o, s) } else { (0, 0) };
+        let (exported_type_definitions_offset, exported_type_definitions_size) = if version >= 24.0 { let (o, s, _) = sec!(); (o, s) } else { (0, 0) };
         Ok(Self {
-            sanity,
-            version: version_field,
-            string_literal_offset,
-            string_literal_size,
-            string_literal_data_offset,
-            string_literal_data_size,
-            string_offset,
-            string_size,
-            events_offset,
-            events_size,
-            properties_offset,
-            properties_size,
-            methods_offset,
-            methods_size,
-            parameter_default_values_offset,
-            parameter_default_values_size,
-            field_default_values_offset,
-            field_default_values_size,
-            field_and_parameter_default_value_data_offset,
-            field_and_parameter_default_value_data_size,
-            field_marshaled_sizes_offset,
-            field_marshaled_sizes_size,
-            parameters_offset,
-            parameters_size,
-            fields_offset,
-            fields_size,
-            generic_parameters_offset,
-            generic_parameters_size,
-            generic_parameter_constraints_offset,
-            generic_parameter_constraints_size,
-            generic_containers_offset,
-            generic_containers_size,
-            nested_types_offset,
-            nested_types_size,
-            interfaces_offset,
-            interfaces_size,
-            vtable_methods_offset,
-            vtable_methods_size,
-            interface_offsets_offset,
-            interface_offsets_size,
-            type_definitions_offset,
-            type_definitions_size,
-            rgctx_entries_offset,
-            rgctx_entries_count,
-            images_offset,
-            images_size,
-            assemblies_offset,
-            assemblies_size,
-            metadata_usage_lists_offset,
-            metadata_usage_lists_count,
-            metadata_usage_pairs_offset,
-            metadata_usage_pairs_count,
-            field_refs_offset,
-            field_refs_size,
-            referenced_assemblies_offset,
-            referenced_assemblies_size,
-            attributes_info_offset,
-            attributes_info_count,
-            attribute_types_offset,
-            attribute_types_count,
-            attribute_data_offset,
-            attribute_data_size,
-            attribute_data_range_offset,
-            attribute_data_range_size,
-            unresolved_virtual_call_parameter_types_offset,
-            unresolved_virtual_call_parameter_types_size,
-            unresolved_virtual_call_parameter_ranges_offset,
-            unresolved_virtual_call_parameter_ranges_size,
-            windows_runtime_type_names_offset,
-            windows_runtime_type_names_size,
-            windows_runtime_strings_offset,
-            windows_runtime_strings_size,
-            exported_type_definitions_offset,
-            exported_type_definitions_size,
-            type_definitions_count,
-            generic_containers_count,
-            interface_offsets_count,
-            parameters_count,
-            events_count,
-            properties_count,
-            nested_types_count,
-            methods_count,
-            generic_parameters_count,
-            fields_count,
+            sanity, version: version_field,
+            string_literal_offset, string_literal_size,
+            string_literal_data_offset, string_literal_data_size,
+            string_offset, string_size,
+            events_offset, events_size,
+            properties_offset, properties_size,
+            methods_offset, methods_size,
+            parameter_default_values_offset, parameter_default_values_size,
+            field_default_values_offset, field_default_values_size,
+            field_and_parameter_default_value_data_offset, field_and_parameter_default_value_data_size,
+            field_marshaled_sizes_offset, field_marshaled_sizes_size,
+            parameters_offset, parameters_size,
+            fields_offset, fields_size,
+            generic_parameters_offset, generic_parameters_size,
+            generic_parameter_constraints_offset, generic_parameter_constraints_size,
+            generic_containers_offset, generic_containers_size,
+            nested_types_offset, nested_types_size,
+            interfaces_offset, interfaces_size,
+            vtable_methods_offset, vtable_methods_size,
+            interface_offsets_offset, interface_offsets_size,
+            type_definitions_offset, type_definitions_size,
+            rgctx_entries_offset, rgctx_entries_count,
+            images_offset, images_size,
+            assemblies_offset, assemblies_size,
+            metadata_usage_lists_offset, metadata_usage_lists_count,
+            metadata_usage_pairs_offset, metadata_usage_pairs_count,
+            field_refs_offset, field_refs_size,
+            referenced_assemblies_offset, referenced_assemblies_size,
+            attributes_info_offset, attributes_info_count,
+            attribute_types_offset, attribute_types_count,
+            attribute_data_offset, attribute_data_size,
+            attribute_data_range_offset, attribute_data_range_size,
+            unresolved_virtual_call_parameter_types_offset, unresolved_virtual_call_parameter_types_size,
+            unresolved_virtual_call_parameter_ranges_offset, unresolved_virtual_call_parameter_ranges_size,
+            windows_runtime_type_names_offset, windows_runtime_type_names_size,
+            windows_runtime_strings_offset, windows_runtime_strings_size,
+            exported_type_definitions_offset, exported_type_definitions_size,
+            type_definitions_count, generic_containers_count, interface_offsets_count,
+            parameters_count, events_count, properties_count, nested_types_count,
+            methods_count, generic_parameters_count, fields_count,
             field_and_parameter_default_value_data_count,
-            type_inline_arrays_offset,
-            type_inline_arrays_size,
-            type_inline_arrays_count,
+            type_inline_arrays_offset, type_inline_arrays_size, type_inline_arrays_count,
         })
     }
 }
@@ -709,51 +499,26 @@ impl Il2CppImageDefinition {
         let assembly_index = stream.read_i32()?;
         let type_start = read_type_def_idx(stream)?;
         let type_count = stream.read_u32()?;
-        let exported_type_start = if version >= 24.0 {
-            read_type_def_idx(stream)?
-        } else {
-            0
-        };
-        let exported_type_count = if version >= 24.0 {
-            stream.read_u32()?
-        } else {
-            0
-        };
+        let exported_type_start = if version >= 24.0 { read_type_def_idx(stream)? } else { 0 };
+        let exported_type_count = if version >= 24.0 { stream.read_u32()? } else { 0 };
         let entry_point_index = read_method_idx(stream)?;
         let token = read_versioned!(stream, version, 19.0, 999.0, read_u32, 0);
         let custom_attribute_start = read_versioned!(stream, version, 24.1, 999.0, read_i32, 0);
         let custom_attribute_count = read_versioned!(stream, version, 24.1, 999.0, read_i32, 0);
         Ok(Self {
-            name_index,
-            assembly_index,
-            type_start,
-            type_count: type_count as i32,
-            exported_type_start,
-            exported_type_count: exported_type_count as i32,
-            entry_point_index,
-            token,
-            custom_attribute_start,
-            custom_attribute_count,
+            name_index, assembly_index, type_start, type_count: type_count as i32,
+            exported_type_start, exported_type_count: exported_type_count as i32,
+            entry_point_index, token, custom_attribute_start, custom_attribute_count,
         })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_start/exported_type_start/entry_point use variable indices
+        if version >= 38.0 { return 0; } // type_start/exported_type_start/entry_point use variable indices
         let mut size = 4 * 4; // name_index, assembly_index, type_start, type_count
-        if version >= 24.0 {
-            size += 8;
-        } // exported_type_start, exported_type_count
-        if version >= 19.0 {
-            size += 4;
-        } // entry_point_index
-        if version >= 19.0 {
-            size += 4;
-        } // token
-        if version >= 24.1 {
-            size += 8;
-        } // custom_attribute_start, custom_attribute_count
+        if version >= 24.0 { size += 8; } // exported_type_start, exported_type_count
+        if version >= 19.0 { size += 4; } // entry_point_index
+        if version >= 19.0 { size += 4; } // token
+        if version >= 24.1 { size += 8; } // custom_attribute_start, custom_attribute_count
         size
     }
 }
@@ -832,34 +597,20 @@ impl Il2CppAssemblyDefinition {
         let referenced_assembly_count = read_versioned!(stream, version, 20.0, 999.0, read_i32, 0);
         let aname = Il2CppAssemblyNameDefinition::read(stream, version)?;
         Ok(Self {
-            image_index,
-            token,
-            custom_attribute_index,
-            referenced_assembly_start,
-            referenced_assembly_count,
-            aname,
+            image_index, token, custom_attribute_index,
+            referenced_assembly_start, referenced_assembly_count, aname,
             module_token,
         })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // module_token + aname may differ
+        if version >= 38.0 { return 0; } // module_token + aname may differ
         let mut size = 4; // image_index
-        if version >= 24.1 {
-            size += 4;
-        } // token
-        if version <= 24.0 {
-            size += 4;
-        } // custom_attribute_index
-        if version >= 20.0 {
-            size += 8;
-        } // referenced_assembly_start + count
+        if version >= 24.1 { size += 4; } // token
+        if version <= 24.0 { size += 4; } // custom_attribute_index
+        if version >= 20.0 { size += 8; } // referenced_assembly_start + count
         size += 4 * 10 + 8; // aname fields
-        if version <= 24.3 {
-            size += 4;
-        } // hash_value_index
+        if version <= 24.3 { size += 4; } // hash_value_index
         size
     }
 }
@@ -911,16 +662,11 @@ impl Il2CppTypeDefinition {
         let byref_type_index = read_versioned!(stream, version, 0.0, 24.5, read_i32, 0);
         let declaring_type_index = read_type_idx(stream)?;
         let parent_index = read_type_idx(stream)?;
-        let element_type_index = if version < 35.0 {
-            stream.read_i32()?
-        } else {
-            -1
-        };
+        let element_type_index = if version < 35.0 { stream.read_i32()? } else { -1 };
         let rgctx_start_index = read_versioned!(stream, version, 0.0, 24.15, read_i32, 0);
         let rgctx_count = read_versioned!(stream, version, 0.0, 24.15, read_i32, 0);
         let generic_container_index = read_gc_idx(stream)?;
-        let delegate_wrapper_from_managed_to_native_index =
-            read_versioned!(stream, version, 0.0, 22.0, read_i32, 0);
+        let delegate_wrapper_from_managed_to_native_index = read_versioned!(stream, version, 0.0, 22.0, read_i32, 0);
         let marshaling_functions_index = read_versioned!(stream, version, 0.0, 22.0, read_i32, 0);
         let ccw_function_index = read_versioned!(stream, version, 21.0, 22.0, read_i32, 0);
         let guid_index = read_versioned!(stream, version, 21.0, 22.0, read_i32, 0);
@@ -944,124 +690,54 @@ impl Il2CppTypeDefinition {
         let bitfield = stream.read_u32()?;
         let token = read_versioned!(stream, version, 19.0, 999.0, read_u32, 0);
         Ok(Self {
-            name_index,
-            namespace_index,
-            custom_attribute_index,
-            byval_type_index,
-            byref_type_index,
-            declaring_type_index,
-            parent_index,
-            element_type_index,
-            rgctx_start_index,
-            rgctx_count,
-            generic_container_index,
-            delegate_wrapper_from_managed_to_native_index,
-            marshaling_functions_index,
-            ccw_function_index,
-            guid_index,
-            flags,
-            field_start,
-            method_start,
-            event_start,
-            property_start,
-            nested_types_start,
-            interfaces_start,
-            vtable_start,
-            interface_offsets_start,
-            method_count,
-            property_count,
-            field_count,
-            event_count,
-            nested_type_count,
-            vtable_count,
-            interfaces_count,
-            interface_offsets_count,
-            bitfield,
-            token,
+            name_index, namespace_index, custom_attribute_index,
+            byval_type_index, byref_type_index, declaring_type_index,
+            parent_index, element_type_index, rgctx_start_index, rgctx_count,
+            generic_container_index, delegate_wrapper_from_managed_to_native_index,
+            marshaling_functions_index, ccw_function_index, guid_index,
+            flags, field_start, method_start, event_start, property_start,
+            nested_types_start, interfaces_start, vtable_start, interface_offsets_start,
+            method_count, property_count, field_count, event_count,
+            nested_type_count, vtable_count, interfaces_count, interface_offsets_count,
+            bitfield, token,
         })
     }
 
-    pub fn is_value_type(&self) -> bool {
-        (self.bitfield & 0x1) == 1
-    }
-    pub fn is_enum(&self) -> bool {
-        ((self.bitfield >> 1) & 0x1) == 1
-    }
-    pub fn has_finalizer(&self) -> bool {
-        ((self.bitfield >> 2) & 0x1) == 1
-    }
-    pub fn has_cctor(&self) -> bool {
-        ((self.bitfield >> 3) & 0x1) == 1
-    }
-    pub fn is_blittable(&self) -> bool {
-        ((self.bitfield >> 4) & 0x1) == 1
-    }
-    pub fn is_import_or_windows_runtime(&self) -> bool {
-        ((self.bitfield >> 5) & 0x1) == 1
-    }
-    pub fn packing_size(&self) -> u32 {
-        decode_packing_size((self.bitfield >> 6) & 0xF)
-    }
-    pub fn packing_size_is_default(&self) -> bool {
-        ((self.bitfield >> 10) & 0x1) == 1
-    }
-    pub fn class_size_is_default(&self) -> bool {
-        ((self.bitfield >> 11) & 0x1) == 1
-    }
-    pub fn specified_packing_size(&self) -> u32 {
-        decode_packing_size((self.bitfield >> 12) & 0xF)
-    }
-    pub fn is_by_ref_like(&self) -> bool {
-        ((self.bitfield >> 16) & 0x1) == 1
-    }
-    pub fn has_inline_array(&self) -> bool {
-        ((self.bitfield >> 17) & 0x1) == 1
-    }
-    pub fn is_abstract(&self) -> bool {
-        (self.flags & 0x80) != 0
-    }
-    pub fn is_interface(&self) -> bool {
-        (self.flags & 0x20) != 0
-    }
-    pub fn is_sealed(&self) -> bool {
-        (self.flags & 0x100) != 0
-    }
+    pub fn is_value_type(&self) -> bool { (self.bitfield & 0x1) == 1 }
+    pub fn is_enum(&self) -> bool { ((self.bitfield >> 1) & 0x1) == 1 }
+    pub fn has_finalizer(&self) -> bool { ((self.bitfield >> 2) & 0x1) == 1 }
+    pub fn has_cctor(&self) -> bool { ((self.bitfield >> 3) & 0x1) == 1 }
+    pub fn is_blittable(&self) -> bool { ((self.bitfield >> 4) & 0x1) == 1 }
+    pub fn is_import_or_windows_runtime(&self) -> bool { ((self.bitfield >> 5) & 0x1) == 1 }
+    pub fn packing_size(&self) -> u32 { decode_packing_size((self.bitfield >> 6) & 0xF) }
+    pub fn packing_size_is_default(&self) -> bool { ((self.bitfield >> 10) & 0x1) == 1 }
+    pub fn class_size_is_default(&self) -> bool { ((self.bitfield >> 11) & 0x1) == 1 }
+    pub fn specified_packing_size(&self) -> u32 { decode_packing_size((self.bitfield >> 12) & 0xF) }
+    pub fn is_by_ref_like(&self) -> bool { ((self.bitfield >> 16) & 0x1) == 1 }
+    pub fn has_inline_array(&self) -> bool { ((self.bitfield >> 17) & 0x1) == 1 }
+    pub fn is_abstract(&self) -> bool { (self.flags & 0x80) != 0 }
+    pub fn is_interface(&self) -> bool { (self.flags & 0x20) != 0 }
+    pub fn is_sealed(&self) -> bool { (self.flags & 0x100) != 0 }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // variable-size in v38+, use count-based loading
+        if version >= 38.0 { return 0; } // variable-size in v38+, use count-based loading
         let mut size = 0usize;
         size += 4 + 4; // name_index, namespace_index
-        if version <= 24.0 {
-            size += 4;
-        } // custom_attribute_index
+        if version <= 24.0 { size += 4; } // custom_attribute_index
         size += 4; // byval_type_index
-        if version <= 24.5 {
-            size += 4;
-        } // byref_type_index
+        if version <= 24.5 { size += 4; } // byref_type_index
         size += 4; // declaring_type_index
         size += 4; // parent_index
-        if version < 35.0 {
-            size += 4;
-        } // element_type_index
-        if version <= 24.15 {
-            size += 8;
-        } // rgctx_start_index, rgctx_count
+        if version < 35.0 { size += 4; } // element_type_index
+        if version <= 24.15 { size += 8; } // rgctx_start_index, rgctx_count
         size += 4; // generic_container_index
-        if version <= 22.0 {
-            size += 8;
-        } // delegate_wrapper, marshaling
-        if version >= 21.0 && version <= 22.0 {
-            size += 8;
-        } // ccw, guid
+        if version <= 22.0 { size += 8; } // delegate_wrapper, marshaling
+        if version >= 21.0 && version <= 22.0 { size += 8; } // ccw, guid
         size += 4; // flags
         size += 4 * 8; // field_start..interface_offsets_start (all i32 pre-v38)
         size += 2 * 8; // method_count..interface_offsets_count
         size += 4; // bitfield
-        if version >= 19.0 {
-            size += 4;
-        } // token
+        if version >= 19.0 { size += 4; } // token
         size
     }
 }
@@ -1107,42 +783,21 @@ impl Il2CppMethodDefinition {
         let slot = stream.read_u16()?;
         let parameter_count = stream.read_u16()?;
         Ok(Self {
-            name_index,
-            declaring_type,
-            return_type,
-            return_parameter_token,
-            parameter_start,
-            custom_attribute_index,
-            generic_container_index,
-            method_index,
-            invoker_index,
-            delegate_wrapper_index,
-            rgctx_start_index,
-            rgctx_count,
-            token,
-            flags,
-            iflags,
-            slot,
-            parameter_count,
+            name_index, declaring_type, return_type, return_parameter_token,
+            parameter_start, custom_attribute_index, generic_container_index,
+            method_index, invoker_index, delegate_wrapper_index,
+            rgctx_start_index, rgctx_count, token, flags, iflags, slot, parameter_count,
         })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // variable-size in v38+ (variable-width indices)
+        if version >= 38.0 { return 0; } // variable-size in v38+ (variable-width indices)
         let mut size = 4 + 4 + 4; // name_index, declaring_type, return_type
-        if version >= 31.0 {
-            size += 4;
-        } // return_parameter_token
+        if version >= 31.0 { size += 4; } // return_parameter_token
         size += 4; // parameter_start
-        if version <= 24.0 {
-            size += 4;
-        } // custom_attribute_index
+        if version <= 24.0 { size += 4; } // custom_attribute_index
         size += 4; // generic_container_index
-        if version <= 24.15 {
-            size += 4 * 5;
-        } // method_index..rgctx_count
+        if version <= 24.15 { size += 4 * 5; } // method_index..rgctx_count
         size += 4; // token
         size += 2 * 4; // flags, iflags, slot, parameter_count
         size
@@ -1163,22 +818,13 @@ impl Il2CppParameterDefinition {
         let token = stream.read_u32()?;
         let custom_attribute_index = read_versioned!(stream, version, 0.0, 24.0, read_i32, 0);
         let type_index = read_type_idx(stream)?;
-        Ok(Self {
-            name_index,
-            token,
-            custom_attribute_index,
-            type_index,
-        })
+        Ok(Self { name_index, token, custom_attribute_index, type_index })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_index is variable
+        if version >= 38.0 { return 0; } // type_index is variable
         let mut size = 4 + 4 + 4; // name_index, token, type_index
-        if version <= 24.0 {
-            size += 4;
-        } // custom_attribute_index
+        if version <= 24.0 { size += 4; } // custom_attribute_index
         size
     }
 }
@@ -1197,25 +843,14 @@ impl Il2CppFieldDefinition {
         let type_index = read_type_idx(stream)?;
         let custom_attribute_index = read_versioned!(stream, version, 0.0, 24.0, read_i32, 0);
         let token = read_versioned!(stream, version, 19.0, 999.0, read_u32, 0);
-        Ok(Self {
-            name_index,
-            type_index,
-            custom_attribute_index,
-            token,
-        })
+        Ok(Self { name_index, type_index, custom_attribute_index, token })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_index is variable
+        if version >= 38.0 { return 0; } // type_index is variable
         let mut size = 4 + 4; // name_index, type_index
-        if version <= 24.0 {
-            size += 4;
-        }
-        if version >= 19.0 {
-            size += 4;
-        }
+        if version <= 24.0 { size += 4; }
+        if version >= 19.0 { size += 4; }
         size
     }
 }
@@ -1232,17 +867,11 @@ impl Il2CppFieldDefaultValue {
         let field_index = read_field_idx(stream)?;
         let type_index = read_type_idx(stream)?;
         let data_index = read_dvdata_idx(stream)?;
-        Ok(Self {
-            field_index,
-            type_index,
-            data_index,
-        })
+        Ok(Self { field_index, type_index, data_index })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // all three fields are variable
+        if version >= 38.0 { return 0; } // all three fields are variable
         12
     }
 }
@@ -1259,17 +888,11 @@ impl Il2CppParameterDefaultValue {
         let parameter_index = read_param_def_idx(stream)?;
         let type_index = read_type_idx(stream)?;
         let data_index = read_dvdata_idx(stream)?;
-        Ok(Self {
-            parameter_index,
-            type_index,
-            data_index,
-        })
+        Ok(Self { parameter_index, type_index, data_index })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // paramIndex (v39+) and typeIndex (v38+) are variable
+        if version >= 38.0 { return 0; } // paramIndex (v39+) and typeIndex (v38+) are variable
         12
     }
 }
@@ -1292,27 +915,14 @@ impl Il2CppPropertyDefinition {
         let attrs = stream.read_u32()?;
         let custom_attribute_index = read_versioned!(stream, version, 0.0, 24.0, read_i32, 0);
         let token = read_versioned!(stream, version, 19.0, 999.0, read_u32, 0);
-        Ok(Self {
-            name_index,
-            get,
-            set,
-            attrs,
-            custom_attribute_index,
-            token,
-        })
+        Ok(Self { name_index, get, set, attrs, custom_attribute_index, token })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 105.0 {
-            return 0;
-        } // get/set use variable method indices
+        if version >= 105.0 { return 0; } // get/set use variable method indices
         let mut size = 4 * 4; // name_index, get, set, attrs
-        if version <= 24.0 {
-            size += 4;
-        }
-        if version >= 19.0 {
-            size += 4;
-        }
+        if version <= 24.0 { size += 4; }
+        if version >= 19.0 { size += 4; }
         size
     }
 }
@@ -1337,28 +947,14 @@ impl Il2CppEventDefinition {
         let raise = read_method_idx(stream)?;
         let custom_attribute_index = read_versioned!(stream, version, 0.0, 24.0, read_i32, 0);
         let token = read_versioned!(stream, version, 19.0, 999.0, read_u32, 0);
-        Ok(Self {
-            name_index,
-            type_index,
-            add,
-            remove,
-            raise,
-            custom_attribute_index,
-            token,
-        })
+        Ok(Self { name_index, type_index, add, remove, raise, custom_attribute_index, token })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_index is variable; method indices variable in v105+
+        if version >= 38.0 { return 0; } // type_index is variable; method indices variable in v105+
         let mut size = 4 * 5;
-        if version <= 24.0 {
-            size += 4;
-        }
-        if version >= 19.0 {
-            size += 4;
-        }
+        if version <= 24.0 { size += 4; }
+        if version >= 19.0 { size += 4; }
         size
     }
 }
@@ -1380,18 +976,11 @@ impl Il2CppGenericContainer {
             (stream.read_i32()?, stream.read_i32()?)
         };
         let generic_parameter_start = read_gp_idx(stream)?;
-        Ok(Self {
-            owner_index,
-            type_argc,
-            is_method,
-            generic_parameter_start,
-        })
+        Ok(Self { owner_index, type_argc, is_method, generic_parameter_start })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 106.0 {
-            return 0;
-        } // variable due to generic_param_idx + packed fields
+        if version >= 106.0 { return 0; } // variable due to generic_param_idx + packed fields
         16 // pre-v106: 4+4+4+4
     }
 }
@@ -1419,9 +1008,7 @@ impl Il2CppGenericParameter {
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // ownerIndex (gc_idx) is variable
+        if version >= 38.0 { return 0; } // ownerIndex (gc_idx) is variable
         16 // 4+4+2+2+2+2
     }
 }
@@ -1444,9 +1031,7 @@ impl Il2CppCustomAttributeTypeRange {
 
     pub fn byte_size(version: f64) -> usize {
         let mut size = 8; // start, count
-        if version >= 24.1 {
-            size += 4;
-        } // token
+        if version >= 24.1 { size += 4; } // token
         size
     }
 }
@@ -1498,17 +1083,13 @@ impl Il2CppMetadataUsagePair {
 
 #[derive(Debug, Clone, Default)]
 pub struct Il2CppStringLiteral {
-    pub length: u32, // 0 for v35+ (length determined from next entry offset)
+    pub length: u32,  // 0 for v35+ (length determined from next entry offset)
     pub data_index: u32,
 }
 
 impl Il2CppStringLiteral {
     pub fn read(stream: &mut BinaryStream, version: f64) -> Result<Self> {
-        let length = if version < 35.0 {
-            stream.read_u32()?
-        } else {
-            0
-        };
+        let length = if version < 35.0 { stream.read_u32()? } else { 0 };
         let data_index = stream.read_u32()?;
         Ok(Self { length, data_index })
     }
@@ -1528,16 +1109,11 @@ impl Il2CppFieldRef {
     pub fn read(stream: &mut BinaryStream, _version: f64) -> Result<Self> {
         let type_index = read_type_idx(stream)?;
         let field_index = read_field_idx(stream)?;
-        Ok(Self {
-            type_index,
-            field_index,
-        })
+        Ok(Self { type_index, field_index })
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_index and field_index are variable
+        if version >= 38.0 { return 0; } // type_index and field_index are variable
         8
     }
 }
@@ -1574,9 +1150,7 @@ impl Il2CppInlineArrayLength {
     }
 
     pub fn byte_size(version: f64) -> usize {
-        if version >= 38.0 {
-            return 0;
-        } // type_index is variable
+        if version >= 38.0 { return 0; } // type_index is variable
         8
     }
 }
@@ -1655,11 +1229,7 @@ impl Il2CppRGCTXDefinition {
         })
     }
 
-    pub fn resolve_data(
-        &mut self,
-        stream: &mut BinaryStream,
-        map_vatr: &dyn Fn(u64) -> Result<u64>,
-    ) -> Result<()> {
+    pub fn resolve_data(&mut self, stream: &mut BinaryStream, map_vatr: &dyn Fn(u64) -> Result<u64>) -> Result<()> {
         if self.data_va == 0 || self.def_data.is_some() || self.constrained_data.is_some() {
             return Ok(());
         }
@@ -1737,190 +1307,56 @@ pub struct Il2CppCodeRegistration {
 impl Il2CppCodeRegistration {
     pub fn read(stream: &mut BinaryStream, version: f64) -> Result<Self> {
         Ok(Self {
-            method_pointers_count: if version <= 24.1 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            method_pointers: if version <= 24.1 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            delegate_wrappers_from_native_to_managed_count: if version <= 21.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            delegate_wrappers_from_native_to_managed: if version <= 21.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            reverse_pinvoke_wrapper_count: if version >= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            reverse_pinvoke_wrappers: if version >= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            delegate_wrappers_from_managed_to_native_count: if version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            delegate_wrappers_from_managed_to_native: if version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            marshaling_functions_count: if version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            marshaling_functions: if version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            ccw_marshaling_functions_count: if version >= 21.0 && version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            ccw_marshaling_functions: if version >= 21.0 && version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
+            method_pointers_count: if version <= 24.1 { stream.read_ptr()? } else { 0 },
+            method_pointers: if version <= 24.1 { stream.read_ptr()? } else { 0 },
+            delegate_wrappers_from_native_to_managed_count: if version <= 21.0 { stream.read_ptr()? } else { 0 },
+            delegate_wrappers_from_native_to_managed: if version <= 21.0 { stream.read_ptr()? } else { 0 },
+            reverse_pinvoke_wrapper_count: if version >= 22.0 { stream.read_ptr()? } else { 0 },
+            reverse_pinvoke_wrappers: if version >= 22.0 { stream.read_ptr()? } else { 0 },
+            delegate_wrappers_from_managed_to_native_count: if version <= 22.0 { stream.read_ptr()? } else { 0 },
+            delegate_wrappers_from_managed_to_native: if version <= 22.0 { stream.read_ptr()? } else { 0 },
+            marshaling_functions_count: if version <= 22.0 { stream.read_ptr()? } else { 0 },
+            marshaling_functions: if version <= 22.0 { stream.read_ptr()? } else { 0 },
+            ccw_marshaling_functions_count: if version >= 21.0 && version <= 22.0 { stream.read_ptr()? } else { 0 },
+            ccw_marshaling_functions: if version >= 21.0 && version <= 22.0 { stream.read_ptr()? } else { 0 },
             generic_method_pointers_count: stream.read_ptr()?,
             generic_method_pointers: stream.read_ptr()?,
-            generic_adjustor_thunks: if version >= 24.5 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
+            generic_adjustor_thunks: if version >= 24.5 { stream.read_ptr()? } else { 0 },
             invoker_pointers_count: stream.read_ptr()?,
             invoker_pointers: stream.read_ptr()?,
-            custom_attribute_count: if version <= 24.5 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            custom_attribute_generators: if version <= 24.5 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            guid_count: if version >= 21.0 && version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            guids: if version >= 21.0 && version <= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            unresolved_virtual_call_count: if version >= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            unresolved_virtual_call_pointers: if version >= 22.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            unresolved_instance_call_pointers: if version >= 29.1 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            unresolved_static_call_pointers: if version >= 29.1 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            interop_data_count: if version >= 23.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            interop_data: if version >= 23.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            windows_runtime_factory_count: if version >= 24.3 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            windows_runtime_factory_table: if version >= 24.3 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            code_gen_modules_count: if version >= 24.2 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            code_gen_modules: if version >= 24.2 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
+            custom_attribute_count: if version <= 24.5 { stream.read_ptr()? } else { 0 },
+            custom_attribute_generators: if version <= 24.5 { stream.read_ptr()? } else { 0 },
+            guid_count: if version >= 21.0 && version <= 22.0 { stream.read_ptr()? } else { 0 },
+            guids: if version >= 21.0 && version <= 22.0 { stream.read_ptr()? } else { 0 },
+            unresolved_virtual_call_count: if version >= 22.0 { stream.read_ptr()? } else { 0 },
+            unresolved_virtual_call_pointers: if version >= 22.0 { stream.read_ptr()? } else { 0 },
+            unresolved_instance_call_pointers: if version >= 29.1 { stream.read_ptr()? } else { 0 },
+            unresolved_static_call_pointers: if version >= 29.1 { stream.read_ptr()? } else { 0 },
+            interop_data_count: if version >= 23.0 { stream.read_ptr()? } else { 0 },
+            interop_data: if version >= 23.0 { stream.read_ptr()? } else { 0 },
+            windows_runtime_factory_count: if version >= 24.3 { stream.read_ptr()? } else { 0 },
+            windows_runtime_factory_table: if version >= 24.3 { stream.read_ptr()? } else { 0 },
+            code_gen_modules_count: if version >= 24.2 { stream.read_ptr()? } else { 0 },
+            code_gen_modules: if version >= 24.2 { stream.read_ptr()? } else { 0 },
         })
     }
 
     pub fn field_count(version: f64) -> usize {
         let mut count = 0usize;
-        if version <= 24.1 {
-            count += 2;
-        }
-        if version <= 21.0 {
-            count += 2;
-        }
-        if version >= 22.0 {
-            count += 2;
-        }
-        if version <= 22.0 {
-            count += 4;
-        }
-        if version >= 21.0 && version <= 22.0 {
-            count += 2;
-        }
+        if version <= 24.1 { count += 2; }
+        if version <= 21.0 { count += 2; }
+        if version >= 22.0 { count += 2; }
+        if version <= 22.0 { count += 4; }
+        if version >= 21.0 && version <= 22.0 { count += 2; }
         count += 4;
-        if version >= 24.5 {
-            count += 1;
-        }
-        if version <= 24.5 {
-            count += 2;
-        }
-        if version >= 21.0 && version <= 22.0 {
-            count += 2;
-        }
-        if version >= 22.0 {
-            count += 2;
-        }
-        if version >= 29.1 {
-            count += 2;
-        }
-        if version >= 23.0 {
-            count += 2;
-        }
-        if version >= 24.3 {
-            count += 2;
-        }
-        if version >= 24.2 {
-            count += 2;
-        }
+        if version >= 24.5 { count += 1; }
+        if version <= 24.5 { count += 2; }
+        if version >= 21.0 && version <= 22.0 { count += 2; }
+        if version >= 22.0 { count += 2; }
+        if version >= 29.1 { count += 2; }
+        if version >= 23.0 { count += 2; }
+        if version >= 24.3 { count += 2; }
+        if version >= 24.2 { count += 2; }
         count
     }
 
@@ -1965,41 +1401,21 @@ impl Il2CppMetadataRegistration {
             types: stream.read_ptr()?,
             method_specs_count: stream.read_ptr()?,
             method_specs: stream.read_ptr()?,
-            method_references_count: if version <= 16.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            method_references: if version <= 16.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
+            method_references_count: if version <= 16.0 { stream.read_ptr()? } else { 0 },
+            method_references: if version <= 16.0 { stream.read_ptr()? } else { 0 },
             field_offsets_count: stream.read_ptr()?,
             field_offsets: stream.read_ptr()?,
             type_definitions_sizes_count: stream.read_ptr()?,
             type_definitions_sizes: stream.read_ptr()?,
-            metadata_usages_count: if version >= 19.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
-            metadata_usages: if version >= 19.0 {
-                stream.read_ptr()?
-            } else {
-                0
-            },
+            metadata_usages_count: if version >= 19.0 { stream.read_ptr()? } else { 0 },
+            metadata_usages: if version >= 19.0 { stream.read_ptr()? } else { 0 },
         })
     }
 
     pub fn field_count(version: f64) -> usize {
         let mut count = 16usize; // 8 pairs of count+pointer
-        if version <= 16.0 {
-            count += 2;
-        }
-        if version >= 19.0 {
-            count += 2;
-        }
+        if version <= 16.0 { count += 2; }
+        if version >= 19.0 { count += 2; }
         count
     }
 }
@@ -2191,9 +1607,7 @@ impl Il2CppGenericMethodIndices {
         Ok(Self {
             method_index: stream.read_i32()?,
             invoker_index: stream.read_i32()?,
-            adjustor_thunk: if (version >= 24.5 && (version - 27.0).abs() > 0.001)
-                || version >= 27.1
-            {
+            adjustor_thunk: if (version >= 24.5 && (version - 27.0).abs() > 0.001) || version >= 27.1 {
                 stream.read_i32()?
             } else {
                 0
@@ -2248,16 +1662,8 @@ impl Il2CppCodeGenModule {
         let method_pointers = stream.read_ptr()?;
 
         let has_adjustor_thunks = (version >= 24.5 && version < 27.0) || version >= 27.1;
-        let adjustor_thunk_count = if has_adjustor_thunks {
-            stream.read_ptr()?
-        } else {
-            0
-        };
-        let adjustor_thunks = if has_adjustor_thunks {
-            stream.read_ptr()?
-        } else {
-            0
-        };
+        let adjustor_thunk_count = if has_adjustor_thunks { stream.read_ptr()? } else { 0 };
+        let adjustor_thunks = if has_adjustor_thunks { stream.read_ptr()? } else { 0 };
 
         let invoker_indices = stream.read_ptr()?;
         let reverse_pinvoke_wrapper_count = stream.read_ptr()?;

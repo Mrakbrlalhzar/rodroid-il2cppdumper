@@ -3,27 +3,30 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use dotnetdll::resolution::{MethodRefIndex, Resolution};
-use dotnetdll::resolved::assembly::ExternalAssemblyReference;
-use dotnetdll::resolved::attribute::{Attribute, CustomAttributeData, FixedArg, NamedArg};
 use dotnetdll::resolved::body;
-use dotnetdll::resolved::generic;
 use dotnetdll::resolved::il::Instruction;
-use dotnetdll::resolved::members::{self, Event, Field, Method, ParameterMetadata, Property};
+use dotnetdll::resolved::members::{self, Field, Method, Property, Event, ParameterMetadata};
 use dotnetdll::resolved::module::Module;
-use dotnetdll::resolved::signature::{MethodSignature, Parameter, ReturnType};
-use dotnetdll::resolved::types::{
-    Accessibility as TypeAccessibility, BaseType, ExternalTypeReference, MemberType, MethodType,
-    ResolutionScope, TypeDefinition as DotNetTypeDef, TypeFlags, TypeSource, UserType, ValueKind,
+use dotnetdll::resolved::signature::{
+    MethodSignature, Parameter, ReturnType,
 };
+use dotnetdll::resolved::types::{
+    BaseType, ExternalTypeReference, MemberType, MethodType,
+    TypeDefinition as DotNetTypeDef, TypeFlags, TypeSource,
+    ResolutionScope, UserType, ValueKind, Accessibility as TypeAccessibility,
+};
+use dotnetdll::resolved::assembly::ExternalAssemblyReference;
+use dotnetdll::resolved::generic;
+use dotnetdll::resolved::attribute::{Attribute, CustomAttributeData, NamedArg, FixedArg};
+use dotnetdll::resolution::{Resolution, MethodRefIndex};
 
-use crate::config::Config;
-use crate::error::Result;
-use crate::executor::Il2CppExecutor;
+use crate::il2cpp::metadata::Metadata;
 use crate::il2cpp::base::Il2Cpp;
 use crate::il2cpp::enums::Il2CppTypeEnum;
-use crate::il2cpp::metadata::Metadata;
 use crate::il2cpp::structures::*;
+use crate::executor::Il2CppExecutor;
+use crate::config::Config;
+use crate::error::Result;
 
 #[allow(dead_code)]
 struct AttrCtors {
@@ -35,15 +38,12 @@ struct AttrCtors {
 }
 
 fn make_named_string_attr<'a>(ctor: MethodRefIndex, fields: Vec<(&str, String)>) -> Attribute<'a> {
-    let named_args = fields
-        .into_iter()
-        .map(|(name, value)| {
-            NamedArg::Field(
-                Cow::Owned(name.to_string()),
-                FixedArg::String(Some(Cow::Owned(value))),
-            )
-        })
-        .collect();
+    let named_args = fields.into_iter().map(|(name, value)| {
+        NamedArg::Field(
+            Cow::Owned(name.to_string()),
+            FixedArg::String(Some(Cow::Owned(value))),
+        )
+    }).collect();
     Attribute::new(
         members::UserMethod::Reference(ctor),
         CustomAttributeData {
@@ -53,45 +53,38 @@ fn make_named_string_attr<'a>(ctor: MethodRefIndex, fields: Vec<(&str, String)>)
     )
 }
 
-fn push_attr_ctor(
-    resolution: &mut Resolution<'_>,
-    asm_ref: dotnetdll::resolution::AssemblyRefIndex,
-    name: String,
-) -> MethodRefIndex {
-    let type_ref = resolution.push_type_reference(ExternalTypeReference::new(
-        None,
-        Cow::Owned(name),
-        ResolutionScope::Assembly(asm_ref),
-    ));
+fn push_attr_ctor(resolution: &mut Resolution<'_>, asm_ref: dotnetdll::resolution::AssemblyRefIndex, name: String) -> MethodRefIndex {
+    let type_ref = resolution.push_type_reference(
+        ExternalTypeReference::new(
+            None,
+            Cow::Owned(name),
+            ResolutionScope::Assembly(asm_ref),
+        ),
+    );
     let parent_type = MethodType::Base(Box::new(BaseType::Type {
         value_kind: Some(ValueKind::Class),
         source: TypeSource::User(UserType::Reference(type_ref)),
     }));
-    resolution.push_method_reference(members::ExternalMethodReference::new(
-        members::MethodReferenceParent::Type(parent_type),
-        ".ctor",
-        MethodSignature::new(true, ReturnType::VOID, vec![]),
-    ))
+    resolution.push_method_reference(
+        members::ExternalMethodReference::new(
+            members::MethodReferenceParent::Type(parent_type),
+            ".ctor",
+            MethodSignature::new(true, ReturnType::VOID, vec![]),
+        ),
+    )
 }
 
 fn setup_il2cpp_dummy_dll_refs(resolution: &mut Resolution<'_>) -> AttrCtors {
-    let dummy_asm_ref =
-        resolution.push_assembly_reference(ExternalAssemblyReference::new("Il2CppDummyDll"));
+    let dummy_asm_ref = resolution.push_assembly_reference(
+        ExternalAssemblyReference::new("Il2CppDummyDll"),
+    );
 
     AttrCtors {
         address_ctor: push_attr_ctor(resolution, dummy_asm_ref, "AddressAttribute".to_string()),
-        field_offset_ctor: push_attr_ctor(
-            resolution,
-            dummy_asm_ref,
-            "FieldOffsetAttribute".to_string(),
-        ),
+        field_offset_ctor: push_attr_ctor(resolution, dummy_asm_ref, "FieldOffsetAttribute".to_string()),
         token_ctor: push_attr_ctor(resolution, dummy_asm_ref, "TokenAttribute".to_string()),
         attribute_ctor: push_attr_ctor(resolution, dummy_asm_ref, "AttributeAttribute".to_string()),
-        metadata_offset_ctor: push_attr_ctor(
-            resolution,
-            dummy_asm_ref,
-            "MetadataOffsetAttribute".to_string(),
-        ),
+        metadata_offset_ctor: push_attr_ctor(resolution, dummy_asm_ref, "MetadataOffsetAttribute".to_string()),
     }
 }
 
@@ -180,12 +173,10 @@ pub fn generate_dummy_dlls(
     }
 
     for (img_idx, image_def) in image_defs.iter().enumerate() {
-        let image_name = metadata
-            .get_string_from_index(image_def.name_index)
+        let image_name = metadata.get_string_from_index(image_def.name_index)
             .unwrap_or_else(|_| format!("Assembly-{img_idx}.dll"));
 
-        let assembly_name = assembly_defs
-            .get(image_def.assembly_index as usize)
+        let assembly_name = assembly_defs.get(image_def.assembly_index as usize)
             .and_then(|ad| metadata.get_string_from_index(ad.aname.name_index).ok())
             .unwrap_or_else(|| image_name.replace(".dll", ""));
 
@@ -197,30 +188,25 @@ pub fn generate_dummy_dlls(
                 asm.version = dotnetdll::resolved::assembly::Version {
                     major: ad.aname.major as u16,
                     minor: ad.aname.minor as u16,
-                    build: if ad.aname.build >= 0 {
-                        ad.aname.build as u16
-                    } else {
-                        0
-                    },
-                    revision: if ad.aname.revision >= 0 {
-                        ad.aname.revision as u16
-                    } else {
-                        0
-                    },
+                    build: if ad.aname.build >= 0 { ad.aname.build as u16 } else { 0 },
+                    revision: if ad.aname.revision >= 0 { ad.aname.revision as u16 } else { 0 },
                 };
             }
         }
 
         resolution.type_definitions.clear();
 
-        let mscorlib_ref =
-            resolution.push_assembly_reference(ExternalAssemblyReference::new("mscorlib"));
+        let mscorlib_ref = resolution.push_assembly_reference(
+            ExternalAssemblyReference::new("mscorlib"),
+        );
 
-        let void_type_ref = resolution.push_type_reference(ExternalTypeReference::new(
-            Some(Cow::Borrowed("System")),
-            "Void",
-            ResolutionScope::Assembly(mscorlib_ref),
-        ));
+        let void_type_ref = resolution.push_type_reference(
+            ExternalTypeReference::new(
+                Some(Cow::Borrowed("System")),
+                "Void",
+                ResolutionScope::Assembly(mscorlib_ref),
+            ),
+        );
 
         let mut type_map: HashMap<usize, usize> = HashMap::new();
         let type_start = image_def.type_start as usize;
@@ -228,18 +214,11 @@ pub fn generate_dummy_dlls(
 
         for index in type_start..type_end {
             if let Some(type_def) = type_defs_all.get(index) {
-                let ns = metadata
-                    .get_string_from_index(type_def.namespace_index)
-                    .unwrap_or_default();
-                let name = metadata
-                    .get_string_from_index(type_def.name_index)
+                let ns = metadata.get_string_from_index(type_def.namespace_index).unwrap_or_default();
+                let name = metadata.get_string_from_index(type_def.name_index)
                     .unwrap_or_else(|_| format!("Type_{index}"));
 
-                let ns_opt = if ns.is_empty() {
-                    None
-                } else {
-                    Some(Cow::Owned(ns))
-                };
+                let ns_opt = if ns.is_empty() { None } else { Some(Cow::Owned(ns)) };
                 let mut td = DotNetTypeDef::new(ns_opt, Cow::Owned(name));
 
                 td.flags = TypeFlags::default();
@@ -272,14 +251,10 @@ pub fn generate_dummy_dlls(
             if let Some(type_def) = type_defs_all.get(index) {
                 if let Some(&dotnet_idx) = type_map.get(&index) {
                     for i in 0..type_def.nested_type_count as usize {
-                        if let Some(&nested_il2cpp) =
-                            nested_type_indices.get(type_def.nested_types_start as usize + i)
-                        {
+                        if let Some(&nested_il2cpp) = nested_type_indices.get(type_def.nested_types_start as usize + i) {
                             if let Some(&nested_dotnet) = type_map.get(&(nested_il2cpp as usize)) {
-                                if let Some(type_idx) = resolution.type_definition_index(dotnet_idx)
-                                {
-                                    resolution.type_definitions[nested_dotnet].encloser =
-                                        Some(type_idx);
+                                if let Some(type_idx) = resolution.type_definition_index(dotnet_idx) {
+                                    resolution.type_definitions[nested_dotnet].encloser = Some(type_idx);
                                 }
                             }
                         }
@@ -292,30 +267,22 @@ pub fn generate_dummy_dlls(
             if let Some(type_def) = type_defs_all.get(index).cloned() {
                 if let Some(&dotnet_idx) = type_map.get(&index) {
                     if type_def.generic_container_index >= 0 {
-                        if let Some(gc) =
-                            generic_containers.get(type_def.generic_container_index as usize)
-                        {
+                        if let Some(gc) = generic_containers.get(type_def.generic_container_index as usize) {
                             for i in 0..gc.type_argc as usize {
                                 let gp_idx = gc.generic_parameter_start as usize + i;
                                 if let Some(gp) = generic_parameters.get(gp_idx) {
-                                    let gp_name = metadata
-                                        .get_string_from_index(gp.name_index as i32)
+                                    let gp_name = metadata.get_string_from_index(gp.name_index as i32)
                                         .unwrap_or_else(|_| format!("T{i}"));
                                     let mut gen_param: generic::Type<'_> =
                                         generic::Generic::new(Cow::Owned(gp_name));
 
-                                    gen_param.special_constraint.reference_type =
-                                        (gp.flags & 0x04) != 0;
-                                    gen_param.special_constraint.value_type =
-                                        (gp.flags & 0x08) != 0;
-                                    gen_param.special_constraint.has_default_constructor =
-                                        (gp.flags & 0x10) != 0;
+                                    gen_param.special_constraint.reference_type = (gp.flags & 0x04) != 0;
+                                    gen_param.special_constraint.value_type = (gp.flags & 0x08) != 0;
+                                    gen_param.special_constraint.has_default_constructor = (gp.flags & 0x10) != 0;
 
                                     match gp.flags & 0x03 {
                                         0x01 => gen_param.variance = generic::Variance::Covariant,
-                                        0x02 => {
-                                            gen_param.variance = generic::Variance::Contravariant
-                                        }
+                                        0x02 => gen_param.variance = generic::Variance::Contravariant,
                                         _ => {}
                                     }
 
@@ -325,30 +292,20 @@ pub fn generate_dummy_dlls(
                                             .copied()
                                             .unwrap_or(-1);
                                         if constraint_type_idx >= 0 {
-                                            if let Some(ct) =
-                                                types_all.get(constraint_type_idx as usize)
-                                            {
+                                            if let Some(ct) = types_all.get(constraint_type_idx as usize) {
                                                 let ctype = il2cpp_type_to_member(
-                                                    ct,
-                                                    &types_all,
-                                                    &type_map,
-                                                    &mut resolution,
-                                                    &ctx,
+                                                    ct, &types_all, &type_map, &mut resolution, &ctx,
                                                 );
-                                                gen_param.type_constraints.push(
-                                                    generic::Constraint {
-                                                        attributes: vec![],
-                                                        custom_modifiers: vec![],
-                                                        constraint_type: ctype,
-                                                    },
-                                                );
+                                                gen_param.type_constraints.push(generic::Constraint {
+                                                    attributes: vec![],
+                                                    custom_modifiers: vec![],
+                                                    constraint_type: ctype,
+                                                });
                                             }
                                         }
                                     }
 
-                                    resolution.type_definitions[dotnet_idx]
-                                        .generic_parameters
-                                        .push(gen_param);
+                                    resolution.type_definitions[dotnet_idx].generic_parameters.push(gen_param);
                                 }
                             }
                         }
@@ -357,11 +314,7 @@ pub fn generate_dummy_dlls(
                     if type_def.parent_index >= 0 {
                         if let Some(parent_type) = types_all.get(type_def.parent_index as usize) {
                             let parent_source = il2cpp_type_to_type_source(
-                                parent_type,
-                                &types_all,
-                                &type_map,
-                                &mut resolution,
-                                &ctx,
+                                parent_type, &types_all, &type_map, &mut resolution, &ctx,
                             );
                             if let Some(src) = parent_source {
                                 resolution.type_definitions[dotnet_idx].extends = Some(src);
@@ -370,21 +323,13 @@ pub fn generate_dummy_dlls(
                     }
 
                     for i in 0..type_def.interfaces_count as usize {
-                        if let Some(&iface_type_idx) =
-                            interface_indices.get(type_def.interfaces_start as usize + i)
-                        {
+                        if let Some(&iface_type_idx) = interface_indices.get(type_def.interfaces_start as usize + i) {
                             if let Some(iface_type) = types_all.get(iface_type_idx as usize) {
                                 let iface_source = il2cpp_type_to_type_source(
-                                    iface_type,
-                                    &types_all,
-                                    &type_map,
-                                    &mut resolution,
-                                    &ctx,
+                                    iface_type, &types_all, &type_map, &mut resolution, &ctx,
                                 );
                                 if let Some(src) = iface_source {
-                                    resolution.type_definitions[dotnet_idx]
-                                        .implements
-                                        .push((vec![], src));
+                                    resolution.type_definitions[dotnet_idx].implements.push((vec![], src));
                                 }
                             }
                         }
@@ -398,14 +343,9 @@ pub fn generate_dummy_dlls(
             if let Some(type_def) = type_defs_all.get(index) {
                 let is_mcd = if type_def.parent_index >= 0 {
                     if let Some(parent_type) = types_all.get(type_def.parent_index as usize) {
-                        if let Some(td) = get_type_def_from_il2cpp_type(parent_type, &type_defs_all)
-                        {
-                            let ns = metadata
-                                .get_string_from_index(td.namespace_index)
-                                .unwrap_or_default();
-                            let name = metadata
-                                .get_string_from_index(td.name_index)
-                                .unwrap_or_default();
+                        if let Some(td) = get_type_def_from_il2cpp_type(parent_type, &type_defs_all) {
+                            let ns = metadata.get_string_from_index(td.namespace_index).unwrap_or_default();
+                            let name = metadata.get_string_from_index(td.name_index).unwrap_or_default();
                             ns == "System" && name == "MulticastDelegate"
                         } else {
                             false
@@ -429,28 +369,17 @@ pub fn generate_dummy_dlls(
                         attr_ctors.token_ctor,
                         vec![("Token", format!("0x{:X}", type_def.token))],
                     );
-                    resolution.type_definitions[dotnet_idx]
-                        .attributes
-                        .push(token_attr);
+                    resolution.type_definitions[dotnet_idx].attributes.push(token_attr);
 
                     let field_end = type_def.field_start + type_def.field_count as i32;
                     for fi in type_def.field_start..field_end {
                         if let Some(field_def) = field_defs_all.get(fi as usize) {
-                            let fname = metadata
-                                .get_string_from_index(field_def.name_index)
+                            let fname = metadata.get_string_from_index(field_def.name_index)
                                 .unwrap_or_else(|_| format!("field_{fi}"));
 
                             let ft = types_all.get(field_def.type_index as usize);
                             let member_type = ft
-                                .map(|t| {
-                                    il2cpp_type_to_member(
-                                        t,
-                                        &types_all,
-                                        &type_map,
-                                        &mut resolution,
-                                        &ctx,
-                                    )
-                                })
+                                .map(|t| il2cpp_type_to_member(t, &types_all, &type_map, &mut resolution, &ctx))
                                 .unwrap_or_else(member_object);
 
                             let field_attrs = ft.map(|t| t.attrs).unwrap_or(0x6);
@@ -459,18 +388,14 @@ pub fn generate_dummy_dlls(
                             let is_literal = (field_attrs & 0x40) != 0;
                             let is_init_only = (field_attrs & 0x20) != 0;
 
-                            let mut field =
-                                Field::new(is_static, access, Cow::Owned(fname), member_type);
+                            let mut field = Field::new(is_static, access, Cow::Owned(fname), member_type);
                             field.literal = is_literal;
                             field.init_only = is_init_only;
 
                             if let Some(fdv) = metadata.get_field_default_value(fi) {
                                 if fdv.data_index != -1 {
                                     match executor.try_get_default_value(
-                                        fdv.type_index,
-                                        fdv.data_index,
-                                        metadata,
-                                        il2cpp,
+                                        fdv.type_index, fdv.data_index, metadata, il2cpp,
                                     ) {
                                         Ok(dv) => {
                                             field.default = Some(default_value_to_constant(&dv));
@@ -487,14 +412,10 @@ pub fn generate_dummy_dlls(
 
                             if !is_literal {
                                 let ft_enum = ft.map(|t| Il2CppTypeEnum::from_u8(t.type_enum));
-                                let is_vt =
-                                    matches!(ft_enum, Some(Some(Il2CppTypeEnum::ValueType)));
+                                let is_vt = matches!(ft_enum, Some(Some(Il2CppTypeEnum::ValueType)));
                                 let field_offset = il2cpp.get_field_offset_from_index(
-                                    index,
-                                    (fi - type_def.field_start) as usize,
-                                    fi as usize,
-                                    is_vt,
-                                    is_static,
+                                    index, (fi - type_def.field_start) as usize, fi as usize,
+                                    is_vt, is_static,
                                 );
                                 if field_offset >= 0 {
                                     field.attributes.push(make_named_string_attr(
@@ -511,21 +432,12 @@ pub fn generate_dummy_dlls(
                     let method_end = type_def.method_start + type_def.method_count as i32;
                     for mi in type_def.method_start..method_end {
                         if let Some(method_def) = method_defs_all.get(mi as usize).cloned() {
-                            let mname = metadata
-                                .get_string_from_index(method_def.name_index as i32)
+                            let mname = metadata.get_string_from_index(method_def.name_index as i32)
                                 .unwrap_or_else(|_| format!("method_{mi}"));
 
                             let ret_il2cpp = types_all.get(method_def.return_type as usize);
                             let ret_type = ret_il2cpp
-                                .map(|t| {
-                                    il2cpp_type_to_return(
-                                        t,
-                                        &types_all,
-                                        &type_map,
-                                        &mut resolution,
-                                        &ctx,
-                                    )
-                                })
+                                .map(|t| il2cpp_type_to_return(t, &types_all, &type_map, &mut resolution, &ctx))
                                 .unwrap_or(ReturnType::VOID);
 
                             let mut params = Vec::new();
@@ -535,15 +447,7 @@ pub fn generate_dummy_dlls(
                                 if let Some(pdef) = parameter_defs_all.get(pidx) {
                                     let pt = types_all.get(pdef.type_index as usize);
                                     let ptype = pt
-                                        .map(|t| {
-                                            il2cpp_type_to_method_type(
-                                                t,
-                                                &types_all,
-                                                &type_map,
-                                                &mut resolution,
-                                                &ctx,
-                                            )
-                                        })
+                                        .map(|t| il2cpp_type_to_method_type(t, &types_all, &type_map, &mut resolution, &ctx))
                                         .unwrap_or_else(method_object);
 
                                     let is_byref = pt.map(|t| t.byref == 1).unwrap_or(false);
@@ -553,28 +457,20 @@ pub fn generate_dummy_dlls(
                                         params.push(Parameter::value(ptype));
                                     }
 
-                                    let pname = metadata
-                                        .get_string_from_index(pdef.name_index)
+                                    let pname = metadata.get_string_from_index(pdef.name_index)
                                         .unwrap_or_else(|_| format!("param{j}"));
                                     let mut pmeta = ParameterMetadata::name(Cow::Owned(pname));
                                     pmeta.is_in = (pt.map(|t| t.attrs).unwrap_or(0) & 0x0001) != 0;
                                     pmeta.is_out = (pt.map(|t| t.attrs).unwrap_or(0) & 0x0002) != 0;
-                                    pmeta.optional =
-                                        (pt.map(|t| t.attrs).unwrap_or(0) & 0x0010) != 0;
+                                    pmeta.optional = (pt.map(|t| t.attrs).unwrap_or(0) & 0x0010) != 0;
 
-                                    if let Some(pdv) =
-                                        metadata.get_parameter_default_value(pidx as i32)
-                                    {
+                                    if let Some(pdv) = metadata.get_parameter_default_value(pidx as i32) {
                                         if pdv.data_index != -1 {
                                             match executor.try_get_default_value(
-                                                pdv.type_index,
-                                                pdv.data_index,
-                                                metadata,
-                                                il2cpp,
+                                                pdv.type_index, pdv.data_index, metadata, il2cpp,
                                             ) {
                                                 Ok(dv) => {
-                                                    pmeta.default =
-                                                        Some(default_value_to_constant(&dv));
+                                                    pmeta.default = Some(default_value_to_constant(&dv));
                                                 }
                                                 Err(_) => {}
                                             }
@@ -604,10 +500,7 @@ pub fn generate_dummy_dlls(
 
                             let method_body = if has_body {
                                 let is_void = ret_il2cpp
-                                    .map(|t| {
-                                        Il2CppTypeEnum::from_u8(t.type_enum)
-                                            == Some(Il2CppTypeEnum::Void)
-                                    })
+                                    .map(|t| Il2CppTypeEnum::from_u8(t.type_enum) == Some(Il2CppTypeEnum::Void))
                                     .unwrap_or(true);
 
                                 if is_void {
@@ -616,23 +509,22 @@ pub fn generate_dummy_dlls(
                                     let is_value = ret_il2cpp
                                         .map(|t| {
                                             let te = Il2CppTypeEnum::from_u8(t.type_enum);
-                                            matches!(
-                                                te,
+                                            matches!(te,
                                                 Some(Il2CppTypeEnum::ValueType)
-                                                    | Some(Il2CppTypeEnum::Boolean)
-                                                    | Some(Il2CppTypeEnum::Char)
-                                                    | Some(Il2CppTypeEnum::I1)
-                                                    | Some(Il2CppTypeEnum::U1)
-                                                    | Some(Il2CppTypeEnum::I2)
-                                                    | Some(Il2CppTypeEnum::U2)
-                                                    | Some(Il2CppTypeEnum::I4)
-                                                    | Some(Il2CppTypeEnum::U4)
-                                                    | Some(Il2CppTypeEnum::I8)
-                                                    | Some(Il2CppTypeEnum::U8)
-                                                    | Some(Il2CppTypeEnum::R4)
-                                                    | Some(Il2CppTypeEnum::R8)
-                                                    | Some(Il2CppTypeEnum::I)
-                                                    | Some(Il2CppTypeEnum::U)
+                                                | Some(Il2CppTypeEnum::Boolean)
+                                                | Some(Il2CppTypeEnum::Char)
+                                                | Some(Il2CppTypeEnum::I1)
+                                                | Some(Il2CppTypeEnum::U1)
+                                                | Some(Il2CppTypeEnum::I2)
+                                                | Some(Il2CppTypeEnum::U2)
+                                                | Some(Il2CppTypeEnum::I4)
+                                                | Some(Il2CppTypeEnum::U4)
+                                                | Some(Il2CppTypeEnum::I8)
+                                                | Some(Il2CppTypeEnum::U8)
+                                                | Some(Il2CppTypeEnum::R4)
+                                                | Some(Il2CppTypeEnum::R8)
+                                                | Some(Il2CppTypeEnum::I)
+                                                | Some(Il2CppTypeEnum::U)
                                             )
                                         })
                                         .unwrap_or(false);
@@ -654,8 +546,7 @@ pub fn generate_dummy_dlls(
                             };
 
                             let access = member_accessibility_from_flags(method_def.flags);
-                            let mut method =
-                                Method::new(access, sig, Cow::Owned(mname), method_body);
+                            let mut method = Method::new(access, sig, Cow::Owned(mname), method_body);
 
                             method.abstract_member = is_abstract;
                             method.virtual_member = is_virtual;
@@ -675,8 +566,7 @@ pub fn generate_dummy_dlls(
                             ));
 
                             if !is_abstract {
-                                let method_pointer =
-                                    il2cpp.get_method_pointer(&image_name, &method_def);
+                                let method_pointer = il2cpp.get_method_pointer(&image_name, &method_def);
                                 if method_pointer > 0 {
                                     let rva = il2cpp.get_rva(method_pointer);
                                     let offset = il2cpp.map_vatr(method_pointer).unwrap_or(0);
@@ -696,34 +586,22 @@ pub fn generate_dummy_dlls(
                             }
 
                             if method_def.generic_container_index >= 0 {
-                                if let Some(gc) = generic_containers
-                                    .get(method_def.generic_container_index as usize)
-                                {
+                                if let Some(gc) = generic_containers.get(method_def.generic_container_index as usize) {
                                     for gi in 0..gc.type_argc as usize {
                                         let gp_idx = gc.generic_parameter_start as usize + gi;
                                         if let Some(gp) = generic_parameters.get(gp_idx) {
-                                            let gp_name = metadata
-                                                .get_string_from_index(gp.name_index as i32)
+                                            let gp_name = metadata.get_string_from_index(gp.name_index as i32)
                                                 .unwrap_or_else(|_| format!("M{gi}"));
                                             let mut gen_param: generic::Method<'_> =
                                                 generic::Generic::new(Cow::Owned(gp_name));
 
-                                            gen_param.special_constraint.reference_type =
-                                                (gp.flags & 0x04) != 0;
-                                            gen_param.special_constraint.value_type =
-                                                (gp.flags & 0x08) != 0;
-                                            gen_param.special_constraint.has_default_constructor =
-                                                (gp.flags & 0x10) != 0;
+                                            gen_param.special_constraint.reference_type = (gp.flags & 0x04) != 0;
+                                            gen_param.special_constraint.value_type = (gp.flags & 0x08) != 0;
+                                            gen_param.special_constraint.has_default_constructor = (gp.flags & 0x10) != 0;
 
                                             match gp.flags & 0x03 {
-                                                0x01 => {
-                                                    gen_param.variance =
-                                                        generic::Variance::Covariant
-                                                }
-                                                0x02 => {
-                                                    gen_param.variance =
-                                                        generic::Variance::Contravariant
-                                                }
+                                                0x01 => gen_param.variance = generic::Variance::Covariant,
+                                                0x02 => gen_param.variance = generic::Variance::Contravariant,
                                                 _ => {}
                                             }
 
@@ -740,42 +618,21 @@ pub fn generate_dummy_dlls(
                     let prop_end = type_def.property_start + type_def.property_count as i32;
                     for pi in type_def.property_start..prop_end {
                         if let Some(prop_def) = property_defs_all.get(pi as usize) {
-                            let pname = metadata
-                                .get_string_from_index(prop_def.name_index)
+                            let pname = metadata.get_string_from_index(prop_def.name_index)
                                 .unwrap_or_else(|_| format!("property_{pi}"));
 
                             let prop_type: MemberType = if prop_def.get >= 0 {
                                 let gm_idx = (type_def.method_start + prop_def.get) as usize;
-                                method_defs_all
-                                    .get(gm_idx)
+                                method_defs_all.get(gm_idx)
                                     .and_then(|gm| types_all.get(gm.return_type as usize))
-                                    .map(|t| {
-                                        il2cpp_type_to_member(
-                                            t,
-                                            &types_all,
-                                            &type_map,
-                                            &mut resolution,
-                                            &ctx,
-                                        )
-                                    })
+                                    .map(|t| il2cpp_type_to_member(t, &types_all, &type_map, &mut resolution, &ctx))
                                     .unwrap_or_else(member_object)
                             } else if prop_def.set >= 0 {
                                 let sm_idx = (type_def.method_start + prop_def.set) as usize;
-                                method_defs_all
-                                    .get(sm_idx)
-                                    .and_then(|sm| {
-                                        parameter_defs_all.get(sm.parameter_start as usize)
-                                    })
+                                method_defs_all.get(sm_idx)
+                                    .and_then(|sm| parameter_defs_all.get(sm.parameter_start as usize))
                                     .and_then(|p| types_all.get(p.type_index as usize))
-                                    .map(|t| {
-                                        il2cpp_type_to_member(
-                                            t,
-                                            &types_all,
-                                            &type_map,
-                                            &mut resolution,
-                                            &ctx,
-                                        )
-                                    })
+                                    .map(|t| il2cpp_type_to_member(t, &types_all, &type_map, &mut resolution, &ctx))
                                     .unwrap_or_else(member_object)
                             } else {
                                 member_object()
@@ -783,14 +640,12 @@ pub fn generate_dummy_dlls(
 
                             let is_static_prop = if prop_def.get >= 0 {
                                 let gm_idx = (type_def.method_start + prop_def.get) as usize;
-                                method_defs_all
-                                    .get(gm_idx)
+                                method_defs_all.get(gm_idx)
                                     .map(|m| (m.flags & 0x10) != 0)
                                     .unwrap_or(false)
                             } else if prop_def.set >= 0 {
                                 let sm_idx = (type_def.method_start + prop_def.set) as usize;
-                                method_defs_all
-                                    .get(sm_idx)
+                                method_defs_all.get(sm_idx)
                                     .map(|m| (m.flags & 0x10) != 0)
                                     .unwrap_or(false)
                             } else {
@@ -805,30 +660,18 @@ pub fn generate_dummy_dlls(
                             property.special_name = (prop_def.attrs & 0x0200) != 0;
                             property.runtime_special_name = (prop_def.attrs & 0x0400) != 0;
 
-                            resolution.type_definitions[dotnet_idx]
-                                .properties
-                                .push(property);
+                            resolution.type_definitions[dotnet_idx].properties.push(property);
                         }
                     }
 
                     let event_end = type_def.event_start + type_def.event_count as i32;
                     for ei in type_def.event_start..event_end {
                         if let Some(event_def) = event_defs_all.get(ei as usize) {
-                            let ename = metadata
-                                .get_string_from_index(event_def.name_index)
+                            let ename = metadata.get_string_from_index(event_def.name_index)
                                 .unwrap_or_else(|_| format!("event_{ei}"));
 
-                            let etype = types_all
-                                .get(event_def.type_index as usize)
-                                .map(|t| {
-                                    il2cpp_type_to_member(
-                                        t,
-                                        &types_all,
-                                        &type_map,
-                                        &mut resolution,
-                                        &ctx,
-                                    )
-                                })
+                            let etype = types_all.get(event_def.type_index as usize)
+                                .map(|t| il2cpp_type_to_member(t, &types_all, &type_map, &mut resolution, &ctx))
                                 .unwrap_or_else(member_object);
 
                             let add_method = if event_def.add >= 0 {
@@ -848,25 +691,16 @@ pub fn generate_dummy_dlls(
                                             vec![Parameter::value(method_type_from_member(&etype))],
                                         )
                                     };
-                                    let add_name = metadata
-                                        .get_string_from_index(md.name_index as i32)
+                                    let add_name = metadata.get_string_from_index(md.name_index as i32)
                                         .unwrap_or_else(|_| format!("add_{ename}"));
                                     Method::new(
                                         access,
                                         sig,
                                         Cow::Owned(add_name),
-                                        if !skip_body {
-                                            Some(body::Method::new(vec![Instruction::Return]))
-                                        } else {
-                                            None
-                                        },
+                                        if !skip_body { Some(body::Method::new(vec![Instruction::Return])) } else { None },
                                     )
                                 } else {
-                                    make_stub_event_method(
-                                        &format!("add_{ename}"),
-                                        &etype,
-                                        skip_body,
-                                    )
+                                    make_stub_event_method(&format!("add_{ename}"), &etype, skip_body)
                                 }
                             } else {
                                 make_stub_event_method(&format!("add_{ename}"), &etype, skip_body)
@@ -889,36 +723,27 @@ pub fn generate_dummy_dlls(
                                             vec![Parameter::value(method_type_from_member(&etype))],
                                         )
                                     };
-                                    let rm_name = metadata
-                                        .get_string_from_index(md.name_index as i32)
+                                    let rm_name = metadata.get_string_from_index(md.name_index as i32)
                                         .unwrap_or_else(|_| format!("remove_{ename}"));
                                     Method::new(
                                         access,
                                         sig,
                                         Cow::Owned(rm_name),
-                                        if !skip_body {
-                                            Some(body::Method::new(vec![Instruction::Return]))
-                                        } else {
-                                            None
-                                        },
+                                        if !skip_body { Some(body::Method::new(vec![Instruction::Return])) } else { None },
                                     )
                                 } else {
-                                    make_stub_event_method(
-                                        &format!("remove_{ename}"),
-                                        &etype,
-                                        skip_body,
-                                    )
+                                    make_stub_event_method(&format!("remove_{ename}"), &etype, skip_body)
                                 }
                             } else {
-                                make_stub_event_method(
-                                    &format!("remove_{ename}"),
-                                    &etype,
-                                    skip_body,
-                                )
+                                make_stub_event_method(&format!("remove_{ename}"), &etype, skip_body)
                             };
 
-                            let mut event =
-                                Event::new(Cow::Owned(ename), etype, add_method, remove_method);
+                            let mut event = Event::new(
+                                Cow::Owned(ename),
+                                etype,
+                                add_method,
+                                remove_method,
+                            );
                             event.special_name = (event_def.type_index as u32 & 0x0200) != 0;
 
                             resolution.type_definitions[dotnet_idx].events.push(event);
@@ -933,14 +758,9 @@ pub fn generate_dummy_dlls(
                 if let Some(type_def) = type_defs_all.get(index).cloned() {
                     if let Some(&dotnet_idx) = type_map.get(&index) {
                         add_attribute_attributes(
-                            metadata,
-                            il2cpp,
-                            executor,
-                            img_idx,
-                            type_def.custom_attribute_index,
-                            type_def.token,
-                            &type_defs_all,
-                            &attr_ctors,
+                            metadata, il2cpp, executor, img_idx,
+                            type_def.custom_attribute_index, type_def.token,
+                            &type_defs_all, &attr_ctors,
                             &mut resolution.type_definitions[dotnet_idx].attributes,
                         );
 
@@ -948,20 +768,12 @@ pub fn generate_dummy_dlls(
                         for fi in type_def.field_start..field_end {
                             if let Some(field_def) = field_defs_all.get(fi as usize) {
                                 let fi_in_type = (fi - type_def.field_start) as usize;
-                                if fi_in_type < resolution.type_definitions[dotnet_idx].fields.len()
-                                {
+                                if fi_in_type < resolution.type_definitions[dotnet_idx].fields.len() {
                                     add_attribute_attributes(
-                                        metadata,
-                                        il2cpp,
-                                        executor,
-                                        img_idx,
-                                        field_def.custom_attribute_index,
-                                        field_def.token,
-                                        &type_defs_all,
-                                        &attr_ctors,
-                                        &mut resolution.type_definitions[dotnet_idx].fields
-                                            [fi_in_type]
-                                            .attributes,
+                                        metadata, il2cpp, executor, img_idx,
+                                        field_def.custom_attribute_index, field_def.token,
+                                        &type_defs_all, &attr_ctors,
+                                        &mut resolution.type_definitions[dotnet_idx].fields[fi_in_type].attributes,
                                     );
                                 }
                             }
@@ -971,21 +783,12 @@ pub fn generate_dummy_dlls(
                         for mi in type_def.method_start..method_end {
                             if let Some(method_def) = method_defs_all.get(mi as usize) {
                                 let mi_in_type = (mi - type_def.method_start) as usize;
-                                if mi_in_type
-                                    < resolution.type_definitions[dotnet_idx].methods.len()
-                                {
+                                if mi_in_type < resolution.type_definitions[dotnet_idx].methods.len() {
                                     add_attribute_attributes(
-                                        metadata,
-                                        il2cpp,
-                                        executor,
-                                        img_idx,
-                                        method_def.custom_attribute_index,
-                                        method_def.token,
-                                        &type_defs_all,
-                                        &attr_ctors,
-                                        &mut resolution.type_definitions[dotnet_idx].methods
-                                            [mi_in_type]
-                                            .attributes,
+                                        metadata, il2cpp, executor, img_idx,
+                                        method_def.custom_attribute_index, method_def.token,
+                                        &type_defs_all, &attr_ctors,
+                                        &mut resolution.type_definitions[dotnet_idx].methods[mi_in_type].attributes,
                                     );
                                 }
                             }
@@ -1034,11 +837,7 @@ fn make_stub_event_method<'a>(name: &str, etype: &MemberType, skip_body: bool) -
         dotnetdll::resolved::Accessibility::Public,
         sig,
         Cow::Owned(name.to_string()),
-        if !skip_body {
-            Some(body::Method::new(vec![Instruction::Return]))
-        } else {
-            None
-        },
+        if !skip_body { Some(body::Method::new(vec![Instruction::Return])) } else { None },
     )
 }
 
@@ -1053,11 +852,10 @@ fn add_attribute_attributes<'a>(
     attr_ctors: &AttrCtors,
     target_attrs: &mut Vec<Attribute<'a>>,
 ) {
-    let attr_idx =
-        match metadata.get_custom_attribute_index(image_index, custom_attribute_index, token) {
-            Some(idx) => idx,
-            None => return,
-        };
+    let attr_idx = match metadata.get_custom_attribute_index(image_index, custom_attribute_index, token) {
+        Some(idx) => idx,
+        None => return,
+    };
 
     if metadata.version < 29.0 {
         if attr_idx >= metadata.attribute_type_ranges.len() {
@@ -1107,8 +905,7 @@ fn add_attribute_attributes<'a>(
             return;
         }
 
-        let data_offset =
-            metadata.header.attribute_data_offset as u64 + start_range.start_offset as u64;
+        let data_offset = metadata.header.attribute_data_offset as u64 + start_range.start_offset as u64;
         let data_size = (end_range.start_offset - start_range.start_offset) as usize;
         if data_size == 0 || data_size > 1024 * 1024 {
             return;
@@ -1120,11 +917,10 @@ fn add_attribute_attributes<'a>(
             Err(_) => return,
         };
 
-        let mut reader =
-            match crate::executor::custom_attribute_reader::CustomAttributeDataReader::new(data) {
-                Ok(r) => r,
-                Err(_) => return,
-            };
+        let mut reader = match crate::executor::custom_attribute_reader::CustomAttributeDataReader::new(data) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
 
         if reader.count == 0 {
             return;
@@ -1152,17 +948,9 @@ fn get_type_name_from_il2cpp_type(
         Some(Il2CppTypeEnum::Class) | Some(Il2CppTypeEnum::ValueType) => {
             let td_idx = il2cpp_type.datapoint as usize;
             if let Some(td) = type_defs.get(td_idx) {
-                let ns = metadata
-                    .get_string_from_index(td.namespace_index)
-                    .unwrap_or_default();
-                let name = metadata
-                    .get_string_from_index(td.name_index)
-                    .unwrap_or_default();
-                if ns.is_empty() {
-                    name
-                } else {
-                    format!("{ns}.{name}")
-                }
+                let ns = metadata.get_string_from_index(td.namespace_index).unwrap_or_default();
+                let name = metadata.get_string_from_index(td.name_index).unwrap_or_default();
+                if ns.is_empty() { name } else { format!("{ns}.{name}") }
             } else {
                 format!("Type_{td_idx}")
             }
@@ -1173,19 +961,20 @@ fn get_type_name_from_il2cpp_type(
 
 fn generate_il2cpp_dummy_dll(dummy_dir: &Path) -> Result<()> {
     let mut resolution = Resolution::new(Module::new("Il2CppDummyDll.dll"));
-    resolution.assembly = Some(dotnetdll::resolved::assembly::Assembly::new(
-        "Il2CppDummyDll",
-    ));
+    resolution.assembly = Some(dotnetdll::resolved::assembly::Assembly::new("Il2CppDummyDll"));
     resolution.type_definitions.clear();
 
-    let mscorlib_ref =
-        resolution.push_assembly_reference(ExternalAssemblyReference::new("mscorlib"));
+    let mscorlib_ref = resolution.push_assembly_reference(
+        ExternalAssemblyReference::new("mscorlib"),
+    );
 
-    let attribute_base_ref = resolution.push_type_reference(ExternalTypeReference::new(
-        Some(Cow::Borrowed("System")),
-        "Attribute",
-        ResolutionScope::Assembly(mscorlib_ref),
-    ));
+    let attribute_base_ref = resolution.push_type_reference(
+        ExternalTypeReference::new(
+            Some(Cow::Borrowed("System")),
+            "Attribute",
+            ResolutionScope::Assembly(mscorlib_ref),
+        ),
+    );
     let attribute_base = TypeSource::User(UserType::Reference(attribute_base_ref));
 
     let string_type = MemberType::Base(Box::new(BaseType::String));
@@ -1239,9 +1028,7 @@ fn generate_il2cpp_dummy_dll(dummy_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn default_value_to_constant(
-    dv: &crate::executor::il2cpp_executor::DefaultValue,
-) -> members::Constant {
+fn default_value_to_constant(dv: &crate::executor::il2cpp_executor::DefaultValue) -> members::Constant {
     use crate::executor::il2cpp_executor::DefaultValue;
     match dv {
         DefaultValue::Bool(v) => members::Constant::Boolean(*v),
@@ -1284,10 +1071,7 @@ fn base_member_to_method(b: &BaseType<MemberType>) -> BaseType<MethodType> {
                 TypeSource::User(u) => TypeSource::User(*u),
                 TypeSource::Generic { base, parameters } => TypeSource::Generic {
                     base: *base,
-                    parameters: parameters
-                        .iter()
-                        .map(|p| method_type_from_member(p))
-                        .collect(),
+                    parameters: parameters.iter().map(|p| method_type_from_member(p)).collect(),
                 },
             },
         },
@@ -1343,11 +1127,13 @@ fn resolve_type_source_for_typedef(
         }
     }
 
-    let type_ref = resolution.push_type_reference(ExternalTypeReference::new(
-        Some(Cow::Owned(String::new())),
-        format!("__External_{td_index}"),
-        ResolutionScope::Assembly(ctx.mscorlib_ref),
-    ));
+    let type_ref = resolution.push_type_reference(
+        ExternalTypeReference::new(
+            Some(Cow::Owned(String::new())),
+            format!("__External_{td_index}"),
+            ResolutionScope::Assembly(ctx.mscorlib_ref),
+        ),
+    );
     TypeSource::User(UserType::Reference(type_ref))
 }
 
@@ -1363,10 +1149,7 @@ fn il2cpp_type_to_type_source(
         Il2CppTypeEnum::Class | Il2CppTypeEnum::ValueType => {
             let td_index = il2cpp_type.datapoint as usize;
             Some(resolve_type_source_for_typedef(
-                td_index,
-                type_map,
-                resolution,
-                ctx,
+                td_index, type_map, resolution, ctx,
                 type_enum == Il2CppTypeEnum::ValueType,
             ))
         }
@@ -1374,10 +1157,7 @@ fn il2cpp_type_to_type_source(
             let mt = il2cpp_type_to_member(il2cpp_type, types, type_map, resolution, ctx);
             match mt {
                 MemberType::Base(b) => match *b {
-                    BaseType::Type {
-                        value_kind: _,
-                        source,
-                    } => Some(source),
+                    BaseType::Type { value_kind: _, source } => Some(source),
                     _ => None,
                 },
                 _ => None,
@@ -1419,22 +1199,21 @@ fn il2cpp_type_to_base_member(
             } else {
                 Some(ValueKind::Class)
             };
-            let source = resolve_type_source_for_typedef(
-                td_index,
-                type_map,
-                resolution,
-                ctx,
-                vk == Some(ValueKind::ValueType),
-            );
-            BaseType::Type {
-                value_kind: vk,
-                source,
-            }
+            let source = resolve_type_source_for_typedef(td_index, type_map, resolution, ctx, vk == Some(ValueKind::ValueType));
+            BaseType::Type { value_kind: vk, source }
         }
-        Some(Il2CppTypeEnum::SzArray) => BaseType::vector(member_object()),
-        Some(Il2CppTypeEnum::Array) => BaseType::vector(member_object()),
-        Some(Il2CppTypeEnum::Ptr) => BaseType::ValuePointer(vec![], None),
-        Some(Il2CppTypeEnum::GenericInst) => BaseType::Object,
+        Some(Il2CppTypeEnum::SzArray) => {
+            BaseType::vector(member_object())
+        }
+        Some(Il2CppTypeEnum::Array) => {
+            BaseType::vector(member_object())
+        }
+        Some(Il2CppTypeEnum::Ptr) => {
+            BaseType::ValuePointer(vec![], None)
+        }
+        Some(Il2CppTypeEnum::GenericInst) => {
+            BaseType::Object
+        }
         _ => BaseType::Object,
     }
 }
@@ -1450,13 +1229,7 @@ fn il2cpp_type_to_member(
     if let Some(Il2CppTypeEnum::Var) = type_enum {
         return MemberType::TypeGeneric(il2cpp_type.datapoint as usize);
     }
-    MemberType::Base(Box::new(il2cpp_type_to_base_member(
-        il2cpp_type,
-        types,
-        type_map,
-        resolution,
-        ctx,
-    )))
+    MemberType::Base(Box::new(il2cpp_type_to_base_member(il2cpp_type, types, type_map, resolution, ctx)))
 }
 
 fn il2cpp_type_to_base_method(
@@ -1492,31 +1265,25 @@ fn il2cpp_type_to_base_method(
             } else {
                 Some(ValueKind::Class)
             };
-            let source = resolve_type_source_for_typedef(
-                td_index,
-                type_map,
-                resolution,
-                ctx,
-                vk == Some(ValueKind::ValueType),
-            );
+            let source = resolve_type_source_for_typedef(td_index, type_map, resolution, ctx, vk == Some(ValueKind::ValueType));
             let method_source = match source {
                 TypeSource::User(u) => TypeSource::User(u),
                 TypeSource::Generic { base, parameters } => TypeSource::Generic {
                     base,
-                    parameters: parameters
-                        .into_iter()
-                        .map(|p| method_type_from_member(&p))
-                        .collect(),
+                    parameters: parameters.into_iter().map(|p| method_type_from_member(&p)).collect(),
                 },
             };
-            BaseType::Type {
-                value_kind: vk,
-                source: method_source,
-            }
+            BaseType::Type { value_kind: vk, source: method_source }
         }
-        Some(Il2CppTypeEnum::SzArray) => BaseType::vector(method_object()),
-        Some(Il2CppTypeEnum::Array) => BaseType::vector(method_object()),
-        Some(Il2CppTypeEnum::Ptr) => BaseType::ValuePointer(vec![], None),
+        Some(Il2CppTypeEnum::SzArray) => {
+            BaseType::vector(method_object())
+        }
+        Some(Il2CppTypeEnum::Array) => {
+            BaseType::vector(method_object())
+        }
+        Some(Il2CppTypeEnum::Ptr) => {
+            BaseType::ValuePointer(vec![], None)
+        }
         _ => BaseType::Object,
     }
 }
@@ -1535,13 +1302,7 @@ fn il2cpp_type_to_method_type(
     if let Some(Il2CppTypeEnum::MVar) = type_enum {
         return MethodType::MethodGeneric(il2cpp_type.datapoint as usize);
     }
-    MethodType::Base(Box::new(il2cpp_type_to_base_method(
-        il2cpp_type,
-        types,
-        type_map,
-        resolution,
-        ctx,
-    )))
+    MethodType::Base(Box::new(il2cpp_type_to_base_method(il2cpp_type, types, type_map, resolution, ctx)))
 }
 
 fn il2cpp_type_to_return(

@@ -1,7 +1,7 @@
-use super::structures::*;
-use crate::error::{Error, Result};
-use crate::io::BinaryStream;
 use std::collections::HashMap;
+use crate::io::BinaryStream;
+use crate::error::{Error, Result};
+use super::structures::*;
 
 pub const METADATA_MAGIC: u32 = 0xFAB11BAF;
 
@@ -71,18 +71,12 @@ impl Metadata {
         if version_raw < 16 {
             return Err(Error::UnsupportedVersion(version_raw));
         }
-        let known_versions = [
-            16, 17, 19, 20, 21, 22, 24, 27, 29, 31, 33, 35, 38, 39, 104, 105, 106,
-        ];
+        let known_versions = [16, 17, 19, 20, 21, 22, 24, 27, 29, 31, 33, 35, 38, 39, 104, 105, 106];
         if !known_versions.contains(&version_raw) {
-            eprintln!(
-                "Warning: Unknown metadata version {version_raw}. Attempting anyway, results may be incorrect."
-            );
+            eprintln!("Warning: Unknown metadata version {version_raw}. Attempting anyway, results may be incorrect.");
         }
         if version_raw >= 38 {
-            eprintln!(
-                "Info: Unity 6 metadata (v{version_raw}) detected. Using variable-width index mode."
-            );
+            eprintln!("Info: Unity 6 metadata (v{version_raw}) detected. Using variable-width index mode.");
         }
 
         let unity_version = unity_version_str.and_then(UnityVersion::parse);
@@ -90,9 +84,7 @@ impl Metadata {
         let version = if let Some(ref uv) = unity_version {
             let resolved = uv.resolve_sub_version(version_raw);
             if resolved != version_raw as f64 {
-                eprintln!(
-                    "Info: Unity {uv} detected. Resolved version {version_raw} -> {resolved}"
-                );
+                eprintln!("Info: Unity {uv} detected. Resolved version {version_raw} -> {resolved}");
             }
             resolved
         } else {
@@ -182,11 +174,7 @@ impl Metadata {
 
         macro_rules! load {
             ($t:ty, $off:expr, $size:expr, $count:expr) => {{
-                let cnt = if v38 && $count > 0 {
-                    Some($count as usize)
-                } else {
-                    None
-                };
+                let cnt = if v38 && $count > 0 { Some($count as usize) } else { None };
                 self.read_metadata_array::<$t>($off as u64, $size as u64, cnt)?
             }};
         }
@@ -200,60 +188,24 @@ impl Metadata {
             }
         }
 
-        self.assembly_defs = load!(
-            Il2CppAssemblyDefinition,
-            h.assemblies_offset,
-            h.assemblies_size,
-            0
-        );
+        self.assembly_defs = load!(Il2CppAssemblyDefinition, h.assemblies_offset, h.assemblies_size, 0);
 
         if v38 {
-            let (type_defs, td_offsets) = self
-                .read_metadata_array_with_offsets::<Il2CppTypeDefinition>(
-                    h.type_definitions_offset as u64,
-                    h.type_definitions_size as u64,
-                    if h.type_definitions_count > 0 {
-                        Some(h.type_definitions_count as usize)
-                    } else {
-                        None
-                    },
-                )?;
+            let (type_defs, td_offsets) = self.read_metadata_array_with_offsets::<Il2CppTypeDefinition>(
+                h.type_definitions_offset as u64, h.type_definitions_size as u64,
+                if h.type_definitions_count > 0 { Some(h.type_definitions_count as usize) } else { None },
+            )?;
             self.type_defs = type_defs;
             self.type_def_offset_to_index = td_offsets;
         } else {
-            self.type_defs = load!(
-                Il2CppTypeDefinition,
-                h.type_definitions_offset,
-                h.type_definitions_size,
-                h.type_definitions_count
-            );
+            self.type_defs = load!(Il2CppTypeDefinition, h.type_definitions_offset, h.type_definitions_size, h.type_definitions_count);
         }
 
-        self.method_defs = load!(
-            Il2CppMethodDefinition,
-            h.methods_offset,
-            h.methods_size,
-            h.methods_count
-        );
-        self.parameter_defs = load!(
-            Il2CppParameterDefinition,
-            h.parameters_offset,
-            h.parameters_size,
-            h.parameters_count
-        );
-        self.field_defs = load!(
-            Il2CppFieldDefinition,
-            h.fields_offset,
-            h.fields_size,
-            h.fields_count
-        );
+        self.method_defs = load!(Il2CppMethodDefinition, h.methods_offset, h.methods_size, h.methods_count);
+        self.parameter_defs = load!(Il2CppParameterDefinition, h.parameters_offset, h.parameters_size, h.parameters_count);
+        self.field_defs = load!(Il2CppFieldDefinition, h.fields_offset, h.fields_size, h.fields_count);
 
-        let mut field_defaults_vec = load!(
-            Il2CppFieldDefaultValue,
-            h.field_default_values_offset,
-            h.field_default_values_size,
-            0
-        );
+        let mut field_defaults_vec = load!(Il2CppFieldDefaultValue, h.field_default_values_offset, h.field_default_values_size, 0);
         if self.version >= 104.0 && !field_defaults_vec.is_empty() {
             if let Some(last) = field_defaults_vec.last() {
                 if last.field_index == -1 {
@@ -261,28 +213,12 @@ impl Metadata {
                 }
             }
         }
-        self.field_default_values = field_defaults_vec
-            .into_iter()
-            .map(|v| (v.field_index, v))
-            .collect();
+        self.field_default_values = field_defaults_vec.into_iter().map(|v| (v.field_index, v)).collect();
 
-        let param_defaults = load!(
-            Il2CppParameterDefaultValue,
-            h.parameter_default_values_offset,
-            h.parameter_default_values_size,
-            0
-        );
-        self.param_default_values = param_defaults
-            .into_iter()
-            .map(|v| (v.parameter_index, v))
-            .collect();
+        let param_defaults = load!(Il2CppParameterDefaultValue, h.parameter_default_values_offset, h.parameter_default_values_size, 0);
+        self.param_default_values = param_defaults.into_iter().map(|v| (v.parameter_index, v)).collect();
 
-        self.property_defs = load!(
-            Il2CppPropertyDefinition,
-            h.properties_offset,
-            h.properties_size,
-            h.properties_count
-        );
+        self.property_defs = load!(Il2CppPropertyDefinition, h.properties_offset, h.properties_size, h.properties_count);
 
         self.interface_indices = {
             let type_idx_sz = IndexWidths::get_type_index_size(&h);
@@ -312,39 +248,18 @@ impl Metadata {
             h.nested_types_size as usize / 4,
         )?;
 
-        self.event_defs = load!(
-            Il2CppEventDefinition,
-            h.events_offset,
-            h.events_size,
-            h.events_count
-        );
-        self.generic_containers = load!(
-            Il2CppGenericContainer,
-            h.generic_containers_offset,
-            h.generic_containers_size,
-            h.generic_containers_count
-        );
+        self.event_defs = load!(Il2CppEventDefinition, h.events_offset, h.events_size, h.events_count);
+        self.generic_containers = load!(Il2CppGenericContainer, h.generic_containers_offset, h.generic_containers_size, h.generic_containers_count);
 
         if v38 {
-            let (generic_params, gp_offsets) = self
-                .read_metadata_array_with_offsets::<Il2CppGenericParameter>(
-                    h.generic_parameters_offset as u64,
-                    h.generic_parameters_size as u64,
-                    if h.generic_parameters_count > 0 {
-                        Some(h.generic_parameters_count as usize)
-                    } else {
-                        None
-                    },
-                )?;
+            let (generic_params, gp_offsets) = self.read_metadata_array_with_offsets::<Il2CppGenericParameter>(
+                h.generic_parameters_offset as u64, h.generic_parameters_size as u64,
+                if h.generic_parameters_count > 0 { Some(h.generic_parameters_count as usize) } else { None },
+            )?;
             self.generic_parameters = generic_params;
             self.generic_param_offset_to_index = gp_offsets;
         } else {
-            self.generic_parameters = load!(
-                Il2CppGenericParameter,
-                h.generic_parameters_offset,
-                h.generic_parameters_size,
-                h.generic_parameters_count
-            );
+            self.generic_parameters = load!(Il2CppGenericParameter, h.generic_parameters_offset, h.generic_parameters_size, h.generic_parameters_count);
         }
 
         self.constraint_indices = self.stream.read_i32_array(
@@ -357,40 +272,20 @@ impl Metadata {
             h.vtable_methods_size as usize / 4,
         )?;
 
-        self.string_literals = load!(
-            Il2CppStringLiteral,
-            h.string_literal_offset,
-            h.string_literal_size,
-            0
-        );
+        self.string_literals = load!(Il2CppStringLiteral, h.string_literal_offset, h.string_literal_size, 0);
 
         if self.version > 16.0 {
             self.field_refs = load!(Il2CppFieldRef, h.field_refs_offset, h.field_refs_size, 0);
 
             if self.version < 27.0 {
-                let usage_lists = load!(
-                    Il2CppMetadataUsageList,
-                    h.metadata_usage_lists_offset,
-                    h.metadata_usage_lists_count,
-                    0
-                );
-                let usage_pairs = load!(
-                    Il2CppMetadataUsagePair,
-                    h.metadata_usage_pairs_offset,
-                    h.metadata_usage_pairs_count,
-                    0
-                );
+                let usage_lists = load!(Il2CppMetadataUsageList, h.metadata_usage_lists_offset, h.metadata_usage_lists_count, 0);
+                let usage_pairs = load!(Il2CppMetadataUsagePair, h.metadata_usage_pairs_offset, h.metadata_usage_pairs_count, 0);
                 self.process_metadata_usage(&usage_lists, &usage_pairs);
             }
         }
 
         if self.version > 20.0 && self.version < 29.0 {
-            self.attribute_type_ranges = load!(
-                Il2CppCustomAttributeTypeRange,
-                h.attributes_info_offset,
-                h.attributes_info_count,
-                0
-            );
+            self.attribute_type_ranges = load!(Il2CppCustomAttributeTypeRange, h.attributes_info_offset, h.attributes_info_count, 0);
             self.attribute_types = self.stream.read_i32_array(
                 h.attribute_types_offset as u64,
                 h.attribute_types_count as usize / 4,
@@ -398,12 +293,7 @@ impl Metadata {
         }
 
         if self.version >= 29.0 {
-            self.attribute_data_ranges = load!(
-                Il2CppCustomAttributeDataRange,
-                h.attribute_data_range_offset,
-                h.attribute_data_range_size,
-                0
-            );
+            self.attribute_data_ranges = load!(Il2CppCustomAttributeDataRange, h.attribute_data_range_offset, h.attribute_data_range_size, 0);
         }
 
         if self.version > 24.0 {
@@ -414,12 +304,7 @@ impl Metadata {
 
         if v38 {
             self.type_inline_arrays = if self.version >= 104.0 {
-                load!(
-                    Il2CppInlineArrayLength,
-                    h.type_inline_arrays_offset,
-                    h.type_inline_arrays_size,
-                    h.type_inline_arrays_count
-                )
+                load!(Il2CppInlineArrayLength, h.type_inline_arrays_offset, h.type_inline_arrays_size, h.type_inline_arrays_count)
             } else {
                 Vec::new()
             };
@@ -435,19 +320,12 @@ impl Metadata {
         Ok(())
     }
 
-    fn read_metadata_array<T: MetadataReadable>(
-        &mut self,
-        offset: u64,
-        size: u64,
-        count_override: Option<usize>,
-    ) -> Result<Vec<T>> {
+    fn read_metadata_array<T: MetadataReadable>(&mut self, offset: u64, size: u64, count_override: Option<usize>) -> Result<Vec<T>> {
         if offset == 0 || size == 0 {
             return Ok(Vec::new());
         }
         let count = if let Some(c) = count_override {
-            if c == 0 {
-                return Ok(Vec::new());
-            }
+            if c == 0 { return Ok(Vec::new()); }
             c
         } else {
             let element_size = T::byte_size(self.version) as u64;
@@ -480,19 +358,14 @@ impl Metadata {
     }
 
     fn read_metadata_array_with_offsets<T: MetadataReadable>(
-        &mut self,
-        offset: u64,
-        size: u64,
-        count_override: Option<usize>,
+        &mut self, offset: u64, size: u64, count_override: Option<usize>,
     ) -> Result<(Vec<T>, HashMap<u64, usize>)> {
         if offset == 0 || size == 0 {
             return Ok((Vec::new(), HashMap::new()));
         }
 
         let count = if let Some(c) = count_override {
-            if c == 0 {
-                return Ok((Vec::new(), HashMap::new()));
-            }
+            if c == 0 { return Ok((Vec::new(), HashMap::new())); }
             c
         } else {
             let element_size = T::byte_size(self.version) as u64;
@@ -583,8 +456,7 @@ impl Metadata {
 
         for (img_idx, image_def) in self.image_defs.iter().enumerate() {
             let mut dic = HashMap::new();
-            let end = image_def.custom_attribute_start as usize
-                + image_def.custom_attribute_count as usize;
+            let end = image_def.custom_attribute_start as usize + image_def.custom_attribute_count as usize;
 
             for i in image_def.custom_attribute_start as usize..end {
                 if self.version >= 29.0 {
@@ -612,11 +484,7 @@ impl Metadata {
 
     pub fn get_string_literal_from_index(&mut self, index: usize) -> Result<String> {
         if index >= self.string_literals.len() {
-            return Err(crate::error::Error::Other(format!(
-                "String literal index {} out of bounds (len {})",
-                index,
-                self.string_literals.len()
-            )));
+            return Err(crate::error::Error::Other(format!("String literal index {} out of bounds (len {})", index, self.string_literals.len())));
         }
         let sl = &self.string_literals[index];
         let data_base = self.header.string_literal_data_offset as u64;
@@ -625,11 +493,8 @@ impl Metadata {
             let bytes = self.stream.read_bytes(sl.length as usize)?;
             Ok(String::from_utf8_lossy(&bytes).to_string())
         } else {
-            let data_end = self.header.string_literal_data_offset as u64
-                + self.header.string_literal_data_size as u64;
-            let next_offset = self
-                .string_literals
-                .get(index + 1)
+            let data_end = self.header.string_literal_data_offset as u64 + self.header.string_literal_data_size as u64;
+            let next_offset = self.string_literals.get(index + 1)
                 .map(|n| n.data_index as u64)
                 .unwrap_or(data_end - data_base);
             let len = (next_offset - sl.data_index as u64) as usize;
@@ -643,10 +508,7 @@ impl Metadata {
         self.field_default_values.get(&field_index)
     }
 
-    pub fn get_parameter_default_value(
-        &self,
-        param_index: i32,
-    ) -> Option<&Il2CppParameterDefaultValue> {
+    pub fn get_parameter_default_value(&self, param_index: i32) -> Option<&Il2CppParameterDefaultValue> {
         self.param_default_values.get(&param_index)
     }
 

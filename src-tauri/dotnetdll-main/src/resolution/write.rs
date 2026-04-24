@@ -1,7 +1,7 @@
 use super::{EntryPoint, FieldIndex, MethodIndex, MethodMemberIndex, Resolution, TypeIndex};
 use crate::binary::{
     cli::{Header, Metadata, RVASize},
-    heap::*,
+    heap::{BlobReader, BlobWriter, GUIDReader, GUIDWriter, Reader as HeapReader, StringsReader, StringsWriter, UserStringReader, UserStringWriter, Writer as HeapWriter},
     metadata::{header, index, table::*},
     method,
     signature::kinds::MarshalSpec,

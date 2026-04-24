@@ -1,5 +1,5 @@
-use super::DisassembledInstruction;
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter, Mnemonic, OpKind};
+use super::DisassembledInstruction;
 
 pub fn disassemble_x86(
     bytes: &[u8],
@@ -12,9 +12,7 @@ pub fn disassemble_x86(
     let mut formatter = IntelFormatter::new();
 
     formatter.options_mut().set_uppercase_mnemonics(true);
-    formatter
-        .options_mut()
-        .set_space_after_operand_separator(true);
+    formatter.options_mut().set_space_after_operand_separator(true);
     formatter.options_mut().set_hex_prefix("0x");
     formatter.options_mut().set_hex_suffix("");
     formatter.options_mut().set_branch_leading_zeros(false);
@@ -32,7 +30,10 @@ pub fn disassemble_x86(
 
         let (mnemonic_str, operands) = split_mnemonic_operands(&output);
 
-        let is_return = matches!(instruction.mnemonic(), Mnemonic::Ret | Mnemonic::Retf);
+        let is_return = matches!(
+            instruction.mnemonic(),
+            Mnemonic::Ret | Mnemonic::Retf
+        );
 
         let is_call = matches!(instruction.mnemonic(), Mnemonic::Call);
 
@@ -116,27 +117,12 @@ fn split_mnemonic_operands(text: &str) -> (String, String) {
 fn is_jcc_mnemonic(instruction: &Instruction) -> bool {
     matches!(
         instruction.mnemonic(),
-        Mnemonic::Ja
-            | Mnemonic::Jae
-            | Mnemonic::Jb
-            | Mnemonic::Jbe
-            | Mnemonic::Je
-            | Mnemonic::Jne
-            | Mnemonic::Jg
-            | Mnemonic::Jge
-            | Mnemonic::Jl
-            | Mnemonic::Jle
-            | Mnemonic::Jo
-            | Mnemonic::Jno
-            | Mnemonic::Jp
-            | Mnemonic::Jnp
-            | Mnemonic::Js
-            | Mnemonic::Jns
-            | Mnemonic::Jecxz
-            | Mnemonic::Jrcxz
-            | Mnemonic::Loop
-            | Mnemonic::Loope
-            | Mnemonic::Loopne
+        Mnemonic::Ja | Mnemonic::Jae | Mnemonic::Jb | Mnemonic::Jbe
+        | Mnemonic::Je | Mnemonic::Jne | Mnemonic::Jg | Mnemonic::Jge
+        | Mnemonic::Jl | Mnemonic::Jle | Mnemonic::Jo | Mnemonic::Jno
+        | Mnemonic::Jp | Mnemonic::Jnp | Mnemonic::Js | Mnemonic::Jns
+        | Mnemonic::Jecxz | Mnemonic::Jrcxz
+        | Mnemonic::Loop | Mnemonic::Loope | Mnemonic::Loopne
     )
 }
 

@@ -18,6 +18,9 @@ pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Cyclic value-type dependency: {0}")]
+    CyclicDependency(String),
+
     #[error("{0}")]
     Other(String),
 }

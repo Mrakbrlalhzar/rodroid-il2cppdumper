@@ -1,9 +1,9 @@
-use super::structures::*;
-use crate::disassembler::Architecture;
-use crate::error::{Error, Result};
-use crate::io::BinaryStream;
-use crate::search::SearchSection;
 use std::collections::{BTreeSet, HashMap};
+use crate::io::BinaryStream;
+use crate::error::{Result, Error};
+use crate::search::SearchSection;
+use crate::disassembler::Architecture;
+use super::structures::*;
 
 #[derive(Debug, Clone)]
 pub struct VaSegment {
@@ -52,6 +52,8 @@ pub struct Il2Cpp {
     pub unresolved_virtual_call_pointers: Vec<u64>,
     pub arch: Option<Architecture>,
     pub e_machine: u16,
+    pub exported_symbols: Vec<String>,
+    pub api_export_rvas: HashMap<String, u64>,
 }
 
 impl Il2Cpp {
@@ -90,6 +92,8 @@ impl Il2Cpp {
             unresolved_virtual_call_pointers: Vec::new(),
             arch: None,
             e_machine: 0,
+            exported_symbols: Vec::new(),
+            api_export_rvas: HashMap::new(),
         }
     }
 
@@ -125,34 +129,27 @@ impl Il2Cpp {
             field_offset_pointers: elf.field_offsets.clone(),
             field_offsets_are_pointers: elf.field_offsets_are_pointers,
             type_dic: elf.type_dic.clone(),
-            va_segments: elf
-                .segments
-                .iter()
-                .map(|s| VaSegment {
-                    vaddr: s.p_vaddr,
-                    memsz: s.p_memsz,
-                    offset: s.p_offset,
-                })
-                .collect(),
-            data_sections: elf
-                .segments
-                .iter()
-                .filter(|s| s.p_memsz != 0 && matches!(s.p_flags, 2 | 4 | 6))
-                .map(|s| {
-                    SearchSection::new(
-                        s.p_offset,
-                        s.p_offset + s.p_filesz,
-                        s.p_vaddr,
-                        s.p_vaddr + s.p_memsz,
-                    )
-                })
-                .collect(),
+            va_segments: elf.segments.iter().map(|s| VaSegment {
+                vaddr: s.p_vaddr,
+                memsz: s.p_memsz,
+                offset: s.p_offset,
+            }).collect(),
+            data_sections: elf.segments.iter().filter(|s| {
+                s.p_memsz != 0 && matches!(s.p_flags, 2 | 4 | 6)
+            }).map(|s| SearchSection::new(
+                s.p_offset,
+                s.p_offset + s.p_filesz,
+                s.p_vaddr,
+                s.p_vaddr + s.p_memsz,
+            )).collect(),
             rgctxs_dictionary: elf.rgctxs_dictionary.clone(),
             is_pe: false,
             reverse_pinvoke_wrappers: Vec::new(),
             unresolved_virtual_call_pointers: Vec::new(),
             arch: Architecture::from_elf_machine(elf.header.e_machine),
             e_machine: elf.header.e_machine,
+            exported_symbols: Vec::new(),
+            api_export_rvas: HashMap::new(),
         }
     }
 
@@ -166,25 +163,24 @@ impl Il2Cpp {
         self.metadata_registration = metadata_registration;
         self.stream.is_32bit = self.is_32bit;
 
+
         let mr_offset = map_vatr(metadata_registration)?;
         let mr = {
             self.stream.set_position(mr_offset);
             Il2CppMetadataRegistration::read(&mut self.stream, self.version)?
         };
 
+
+
         let types_offset = map_vatr(mr.types)?;
         self.stream.set_position(types_offset);
         let type_ptrs = self.stream.read_ptr_array_inline(mr.types_count as usize)?;
 
+
         self.types.clear();
         self.type_dic.clear();
         for (idx, ptr) in type_ptrs.iter().enumerate() {
-            let t_offset = map_vatr(*ptr).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("type[{}] ptr=0x{:x}: {}", idx, ptr, e),
-                )
-            })?;
+            let t_offset = map_vatr(*ptr).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("type[{}] ptr=0x{:x}: {}", idx, ptr, e)))?;
             self.stream.set_position(t_offset);
             let mut t = Il2CppType::read(&mut self.stream)?;
             t.init(self.version);
@@ -192,93 +188,85 @@ impl Il2Cpp {
             self.type_dic.insert(*ptr, idx);
         }
 
+
         if mr.generic_insts_count > 0 {
+
             let gi_offset = map_vatr(mr.generic_insts)?;
-            self.generic_inst_pointers = self
-                .stream
-                .read_ptr_array(gi_offset, mr.generic_insts_count as usize)?;
+            self.generic_inst_pointers = self.stream.read_ptr_array(gi_offset, mr.generic_insts_count as usize)?;
 
             self.generic_insts.clear();
             for ptr in &self.generic_inst_pointers.clone() {
                 let offset = map_vatr(*ptr)?;
                 self.stream.set_position(offset);
-                self.generic_insts
-                    .push(Il2CppGenericInst::read(&mut self.stream)?);
+                self.generic_insts.push(Il2CppGenericInst::read(&mut self.stream)?);
             }
+
         }
 
         if mr.method_specs_count > 0 && mr.method_specs > 0 {
+
             let ms_offset = map_vatr(mr.method_specs)?;
             self.stream.set_position(ms_offset);
             self.method_specs.clear();
             for _ in 0..mr.method_specs_count {
-                self.method_specs
-                    .push(Il2CppMethodSpec::read(&mut self.stream)?);
+                self.method_specs.push(Il2CppMethodSpec::read(&mut self.stream)?);
             }
+
         }
 
         if mr.generic_method_table > 0 && mr.generic_method_table_count > 0 {
+
             let gmt_offset = map_vatr(mr.generic_method_table)?;
             self.stream.set_position(gmt_offset);
             self.generic_method_table.clear();
             for _ in 0..mr.generic_method_table_count {
-                self.generic_method_table
-                    .push(Il2CppGenericMethodFunctionsDefinitions::read(
-                        &mut self.stream,
-                        self.version,
-                    )?);
+                self.generic_method_table.push(
+                    Il2CppGenericMethodFunctionsDefinitions::read(&mut self.stream, self.version)?
+                );
             }
+
         }
+
 
         let cr_offset = map_vatr(code_registration)?;
         self.stream.set_position(cr_offset);
         let cr = Il2CppCodeRegistration::read(&mut self.stream, self.version)?;
 
+
         if cr.method_pointers > 0 && cr.method_pointers_count > 0 {
+
             let mp_offset = map_vatr(cr.method_pointers)?;
-            self.method_pointers = self
-                .stream
-                .read_ptr_array(mp_offset, cr.method_pointers_count as usize)?;
+            self.method_pointers = self.stream.read_ptr_array(mp_offset, cr.method_pointers_count as usize)?;
         }
 
         if cr.generic_method_pointers > 0 && cr.generic_method_pointers_count > 0 {
+
             let gmp_offset = map_vatr(cr.generic_method_pointers)?;
-            self.generic_method_pointers = self
-                .stream
-                .read_ptr_array(gmp_offset, cr.generic_method_pointers_count as usize)?;
+            self.generic_method_pointers = self.stream.read_ptr_array(gmp_offset, cr.generic_method_pointers_count as usize)?;
         }
 
         if cr.invoker_pointers > 0 && cr.invoker_pointers_count > 0 {
+
             let ip_offset = map_vatr(cr.invoker_pointers)?;
-            self.invoker_pointers = self
-                .stream
-                .read_ptr_array(ip_offset, cr.invoker_pointers_count as usize)?;
+            self.invoker_pointers = self.stream.read_ptr_array(ip_offset, cr.invoker_pointers_count as usize)?;
         }
 
-        if self.version < 27.0
-            && cr.custom_attribute_generators > 0
-            && cr.custom_attribute_count > 0
-        {
+        if self.version < 27.0 && cr.custom_attribute_generators > 0 && cr.custom_attribute_count > 0 {
             let ca_offset = map_vatr(cr.custom_attribute_generators)?;
-            self.custom_attribute_generators = self
-                .stream
-                .read_ptr_array(ca_offset, cr.custom_attribute_count as usize)?;
+            self.custom_attribute_generators = self.stream.read_ptr_array(ca_offset, cr.custom_attribute_count as usize)?;
         }
 
         if mr.metadata_usages > 0 && mr.metadata_usages_count > 0 && self.version < 27.0 {
             let mu_offset = map_vatr(mr.metadata_usages)?;
-            self.metadata_usages = self
-                .stream
-                .read_ptr_array(mu_offset, mr.metadata_usages_count as usize)?;
+            self.metadata_usages = self.stream.read_ptr_array(mu_offset, mr.metadata_usages_count as usize)?;
         }
 
         self.field_offsets_are_pointers = self.version > 21.0;
         if mr.field_offsets > 0 && mr.field_offsets_count > 0 {
+
             let fo_offset = map_vatr(mr.field_offsets)?;
             if self.field_offsets_are_pointers {
-                self.field_offset_pointers = self
-                    .stream
-                    .read_ptr_array(fo_offset, mr.field_offsets_count as usize)?;
+                self.field_offset_pointers = self.stream.read_ptr_array(fo_offset, mr.field_offsets_count as usize)?;
             } else {
                 self.stream.set_position(fo_offset);
                 let mut raw = Vec::with_capacity(mr.field_offsets_count as usize);
@@ -292,8 +280,11 @@ impl Il2Cpp {
         self.build_method_spec_lookup();
 
         if self.version >= 24.2 {
+
             self.load_code_gen_modules(&cr, map_vatr)?;
+
         }
+
 
         Ok(())
     }
@@ -314,10 +305,8 @@ impl Il2Cpp {
 
                 let method_idx = table.indices.method_index as usize;
                 if method_idx < self.generic_method_pointers.len() {
-                    self.method_spec_generic_method_pointers.insert(
-                        table.generic_method_index as usize,
-                        self.generic_method_pointers[method_idx],
-                    );
+                    self.method_spec_generic_method_pointers
+                        .insert(table.generic_method_index as usize, self.generic_method_pointers[method_idx]);
                 }
             }
             let _ = table_idx;
@@ -334,9 +323,7 @@ impl Il2Cpp {
         }
 
         let modules_offset = map_vatr(cr.code_gen_modules)?;
-        let module_ptrs = self
-            .stream
-            .read_ptr_array(modules_offset, cr.code_gen_modules_count as usize)?;
+        let module_ptrs = self.stream.read_ptr_array(modules_offset, cr.code_gen_modules_count as usize)?;
 
         for ptr in module_ptrs {
             let mod_offset = map_vatr(ptr)?;
@@ -348,15 +335,13 @@ impl Il2Cpp {
 
             let method_ptrs = if module.method_pointers > 0 && module.method_pointer_count > 0 {
                 let mp_offset = map_vatr(module.method_pointers)?;
-                self.stream
-                    .read_ptr_array(mp_offset, module.method_pointer_count as usize)
+                self.stream.read_ptr_array(mp_offset, module.method_pointer_count as usize)
                     .unwrap_or_else(|_| vec![0; module.method_pointer_count as usize])
             } else {
                 Vec::new()
             };
 
-            self.code_gen_module_method_pointers
-                .insert(module_name.clone(), method_ptrs);
+            self.code_gen_module_method_pointers.insert(module_name.clone(), method_ptrs);
             self.code_gen_modules.insert(module_name, module);
         }
 
@@ -436,9 +421,7 @@ impl Il2Cpp {
     }
 
     pub fn get_il2cpp_type(&self, pointer: u64) -> Option<&Il2CppType> {
-        self.type_dic
-            .get(&pointer)
-            .and_then(|idx| self.types.get(*idx))
+        self.type_dic.get(&pointer).and_then(|idx| self.types.get(*idx))
     }
 
     pub fn map_vatr(&self, addr: u64) -> Result<u64> {

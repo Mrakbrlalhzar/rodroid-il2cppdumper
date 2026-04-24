@@ -51,6 +51,10 @@ type TranslationKeys = {
   about_channel_2: string; about_channel_2_desc: string;
   about_group: string; about_group_desc: string; about_report_bugs: string;
   target_both: string; target_dump_cs: string; target_diffable_cs: string;
+  label_cpp_headers: string; setting_generate_cpp_scaffold: string;
+  setting_mangle_names: string; setting_enhanced_ida_metadata: string;
+  setting_generate_unity_headers: string; setting_use_topological_sort: string;
+  setting_compiler_layout: string; layout_gcc: string; layout_msvc: string;
 };
 
 const en: TranslationKeys = {
@@ -86,7 +90,7 @@ const en: TranslationKeys = {
   dialog_manual_desc: "Auto-detection failed. Enter CodeRegistration and MetadataRegistration addresses manually.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v3.0", about_description: "IL2CPP binary dumper for Unity games — powered by Rust",
+  about_version: "v4.0", about_description: "IL2CPP binary dumper for Unity games — powered by Rust",
   about_developer: "Developer", about_powered_by: "Powered by Rust 🦀",
   about_community: "Community",
   about_channel_1: "Telegram Channel", about_channel_1_desc: "Updates & releases",
@@ -94,6 +98,10 @@ const en: TranslationKeys = {
   about_group: "Telegram Group", about_group_desc: "Community chat & support",
   about_report_bugs: "Report Bugs",
   target_both: "Both", target_dump_cs: "dump.cs", target_diffable_cs: "DiffableCs",
+  label_cpp_headers: "C++ Headers", setting_generate_cpp_scaffold: "Generate C++ Scaffold",
+  setting_mangle_names: "Mangle Names", setting_enhanced_ida_metadata: "Enhanced IDA Metadata",
+  setting_generate_unity_headers: "Generate Unity Headers", setting_use_topological_sort: "Topological Sort",
+  setting_compiler_layout: "Compiler Layout", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const sq: TranslationKeys = {
@@ -129,7 +137,7 @@ const sq: TranslationKeys = {
   dialog_manual_desc: "Zbulimi automatik dështoi. Vendos adresat CodeRegistration dhe MetadataRegistration manualisht.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v3.0", about_description: "IL2CPP dumper binar për lojëra Unity — mundësuar nga Rust",
+  about_version: "v4.0", about_description: "IL2CPP dumper binar për lojëra Unity — mundësuar nga Rust",
   about_developer: "Zhvilluesi", about_powered_by: "Mundësuar nga Rust 🦀",
   about_community: "Komuniteti",
   about_channel_1: "Kanali Telegram", about_channel_1_desc: "Përditësime & publikime",
@@ -137,6 +145,10 @@ const sq: TranslationKeys = {
   about_group: "Grupi Telegram", about_group_desc: "Bisedë & mbështetje",
   about_report_bugs: "Raporto Defekte",
   target_both: "Both", target_dump_cs: "dump.cs", target_diffable_cs: "DiffableCs",
+  label_cpp_headers: "Titujt C++", setting_generate_cpp_scaffold: "Gjenero Skeletin C++",
+  setting_mangle_names: "Ngatërro Emrat", setting_enhanced_ida_metadata: "Metadata e Përmirësuar IDA",
+  setting_generate_unity_headers: "Gjenero Titujt Unity", setting_use_topological_sort: "Renditje Topologjike",
+  setting_compiler_layout: "Struktura e Kompiluesit", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const ar: TranslationKeys = {
@@ -172,7 +184,7 @@ const ar: TranslationKeys = {
   dialog_manual_desc: "فشل الاكتشاف التلقائي. أدخل عناوين CodeRegistration و MetadataRegistration يدوياً.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v3.0", about_description: "أداة تفريغ IL2CPP لألعاب Unity — مدعوم بـ Rust",
+  about_version: "v4.0", about_description: "أداة تفريغ IL2CPP لألعاب Unity — مدعوم بـ Rust",
   about_developer: "المطور", about_powered_by: "مدعوم بـ Rust 🦀",
   about_community: "المجتمع",
   about_channel_1: "قناة تيليجرام", about_channel_1_desc: "تحديثات & إصدارات",
@@ -180,6 +192,10 @@ const ar: TranslationKeys = {
   about_group: "مجموعة تيليجرام", about_group_desc: "دردشة & دعم المجتمع",
   about_report_bugs: "الإبلاغ عن أخطاء",
   target_both: "Both", target_dump_cs: "dump.cs", target_diffable_cs: "DiffableCs",
+  label_cpp_headers: "ترويسات C++", setting_generate_cpp_scaffold: "إنشاء هيكل C++",
+  setting_mangle_names: "تشويه الأسماء", setting_enhanced_ida_metadata: "بيانات IDA المحسّنة",
+  setting_generate_unity_headers: "إنشاء ترويسات Unity", setting_use_topological_sort: "ترتيب طوبولوجي",
+  setting_compiler_layout: "تخطيط المترجم", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const es: TranslationKeys = {
@@ -215,7 +231,7 @@ const es: TranslationKeys = {
   dialog_manual_desc: "La detección automática falló. Ingrese las direcciones CodeRegistration y MetadataRegistration manualmente.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v3.0", about_description: "IL2CPP binary dumper para juegos Unity — impulsado por Rust",
+  about_version: "v4.0", about_description: "IL2CPP binary dumper para juegos Unity — impulsado por Rust",
   about_developer: "Desarrollador", about_powered_by: "Impulsado por Rust 🦀",
   about_community: "Comunidad",
   about_channel_1: "Canal de Telegram", about_channel_1_desc: "Actualizaciones & lanzamientos",
@@ -223,6 +239,10 @@ const es: TranslationKeys = {
   about_group: "Grupo de Telegram", about_group_desc: "Chat & soporte comunitario",
   about_report_bugs: "Reportar Errores",
   target_both: "Both", target_dump_cs: "dump.cs", target_diffable_cs: "DiffableCs",
+  label_cpp_headers: "Encabezados C++", setting_generate_cpp_scaffold: "Generar Estructura C++",
+  setting_mangle_names: "Desfigurar Nombres", setting_enhanced_ida_metadata: "Metadatos IDA Mejorados",
+  setting_generate_unity_headers: "Generar Encabezados Unity", setting_use_topological_sort: "Orden Topológico",
+  setting_compiler_layout: "Disposición del Compilador", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const hi: TranslationKeys = { ...en,
@@ -232,6 +252,10 @@ const hi: TranslationKeys = { ...en,
   theme_system: "सिस्टम", theme_light: "लाइट", theme_dark: "डार्क",
   dump_complete: "डंप पूर्ण", dump_failed: "डंप विफल",
   label_output_dir: "आउटपुट डायरेक्टरी", output_reset: "डिफ़ॉल्ट पर रीसेट",
+  label_cpp_headers: "C++ हेडर", setting_generate_cpp_scaffold: "C++ स्कैफोल्ड बनाएँ",
+  setting_mangle_names: "नाम मैंगल करें", setting_enhanced_ida_metadata: "उन्नत IDA मेटाडेटा",
+  setting_generate_unity_headers: "Unity हेडर बनाएँ", setting_use_topological_sort: "टोपोलॉजिकल सॉर्ट",
+  setting_compiler_layout: "कंपाइलर लेआउट", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const id: TranslationKeys = { ...en,
@@ -241,6 +265,10 @@ const id: TranslationKeys = { ...en,
   theme_system: "Sistem", theme_light: "Terang", theme_dark: "Gelap",
   dump_complete: "Dump Selesai", dump_failed: "Dump Gagal",
   label_output_dir: "Direktori Output", output_reset: "Reset ke Default",
+  label_cpp_headers: "Header C++", setting_generate_cpp_scaffold: "Buat Scaffold C++",
+  setting_mangle_names: "Mangle Nama", setting_enhanced_ida_metadata: "Metadata IDA Ditingkatkan",
+  setting_generate_unity_headers: "Buat Header Unity", setting_use_topological_sort: "Urutan Topologis",
+  setting_compiler_layout: "Tata Letak Kompiler", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const jv: TranslationKeys = { ...en,
@@ -250,6 +278,10 @@ const jv: TranslationKeys = { ...en,
   theme_system: "Sistem", theme_light: "Padhang", theme_dark: "Peteng",
   dump_complete: "Dump Rampung", dump_failed: "Dump Gagal",
   label_output_dir: "Direktori Output", output_reset: "Reset menyang Default",
+  label_cpp_headers: "Header C++", setting_generate_cpp_scaffold: "Gawe Scaffold C++",
+  setting_mangle_names: "Mangle Jeneng", setting_enhanced_ida_metadata: "Metadata IDA Ditingkatake",
+  setting_generate_unity_headers: "Gawe Header Unity", setting_use_topological_sort: "Urutan Topologis",
+  setting_compiler_layout: "Tata Letak Kompiler", layout_gcc: "GCC", layout_msvc: "MSVC",
 };
 
 const translations: Record<AppLanguage, TranslationKeys> = { en, sq, ar, es, hi, id, jv };

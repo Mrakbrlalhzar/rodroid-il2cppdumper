@@ -1,6 +1,6 @@
-use crate::error::{Error, Result};
 use crate::io::BinaryStream;
-use crate::search::{SearchSection, SectionHelper};
+use crate::search::{SectionHelper, SearchSection};
+use crate::error::{Error, Result};
 
 pub const WASM_MAGIC: u32 = 0x6D736100;
 pub const WASM_VERSION: u32 = 1;
@@ -87,10 +87,7 @@ impl Wasm {
         }
         let version = self.stream.read_u32()?;
         if version != WASM_VERSION {
-            return Err(Error::InvalidFormat(format!(
-                "Unsupported WASM version: {}",
-                version
-            )));
+            return Err(Error::InvalidFormat(format!("Unsupported WASM version: {}", version)));
         }
 
         let data_len = self.stream.len();
@@ -118,8 +115,7 @@ impl Wasm {
                 _ => {}
             }
 
-            self.stream
-                .set_position(section_offset + section_size as u64);
+            self.stream.set_position(section_offset + section_size as u64);
         }
 
         Ok(())
@@ -157,8 +153,7 @@ impl Wasm {
 
             segment.size = self.read_leb128_unsigned()?;
             segment.data_offset = self.stream.position();
-            self.stream
-                .set_position(self.stream.position() + segment.size as u64);
+            self.stream.set_position(self.stream.position() + segment.size as u64);
             self.data_segments.push(segment);
         }
 
@@ -216,25 +211,13 @@ impl Wasm {
         offset
     }
 
-    pub fn get_section_helper(
-        &self,
-        method_count: usize,
-        type_definitions_count: usize,
-        metadata_usages_count: usize,
-        image_count: usize,
-        version: f64,
-    ) -> SectionHelper<'_> {
+    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
         let mut exec_list = Vec::new();
         let mut data_list = Vec::new();
         let mut all = Vec::new();
 
         if let Some(code) = &self.code_section {
-            let s = SearchSection::new(
-                code.offset,
-                code.offset + code.size as u64,
-                code.offset,
-                code.offset + code.size as u64,
-            );
+            let s = SearchSection::new(code.offset, code.offset + code.size as u64, code.offset, code.offset + code.size as u64);
             all.push(s.clone());
             exec_list.push(s);
         }
