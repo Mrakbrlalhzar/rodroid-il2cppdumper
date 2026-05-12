@@ -159,7 +159,7 @@
             </div>
             <div>
               <h1 class="text-sm font-semibold tracking-tight">{$t.app_name}</h1>
-              <p class="text-[10px]" style="color: var(--text-secondary);">v5.0 {currentOs}</p>
+              <p class="text-[10px]" style="color: var(--text-secondary);">v5.5 {currentOs}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">

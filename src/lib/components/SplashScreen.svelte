@@ -60,7 +60,7 @@
       style:opacity={versionVisible ? 1 : 0}
       style:transform="scale({versionVisible ? 1 : 0.8})"
     >
-      <span class="app-badge app-badge-muted text-xs px-4 py-1">v5.0</span>
+      <span class="app-badge app-badge-muted text-xs px-4 py-1">v5.5</span>
     </div>
   </div>
 </div>
