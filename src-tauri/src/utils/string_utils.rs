@@ -23,6 +23,19 @@ pub struct NameSanitizerOptions {
     pub avoid_double_underscore_prefix: bool,
 }
 
+pub fn sanitize_path_component(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => out.push('_'),
+            c if (c as u32) < 0x20 => out.push('_'),
+            c => out.push(c),
+        }
+    }
+    let trimmed = out.trim_end_matches(|c: char| c == '.' || c == ' ').to_string();
+    if trimmed.is_empty() { "_".into() } else { trimmed }
+}
+
 pub fn sanitize_cpp_identifier(name: &str, opts: NameSanitizerOptions) -> String {
     if CPP_RESERVED_KEYWORDS.contains(&name) {
         return format!("_{name}");

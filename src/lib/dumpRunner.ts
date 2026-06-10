@@ -1,0 +1,51 @@
+import { get } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  appState,
+  binaryPath,
+  config,
+  currentScreen,
+  elapsedSeconds,
+  errorMessage,
+  logs,
+  metadataPath,
+  outputDir,
+} from "$lib/stores";
+import type { DumperConfig } from "$lib/types";
+import { setDumpInProgress, isDumpInProgress } from "$lib/dumpState";
+import { setupDumpEvents } from "$lib/dumpEvents";
+
+export async function beginDump(): Promise<void> {
+  if (isDumpInProgress()) return;
+
+  const bp = get(binaryPath);
+  const mp = get(metadataPath);
+  if (!bp || !mp) return;
+
+  // Listeners must exist before Rust emits logs or input prompts.
+  await setupDumpEvents();
+
+  setDumpInProgress(true);
+  logs.set([]);
+  elapsedSeconds.set(0);
+  appState.set("dumping");
+  currentScreen.set("dumping");
+
+  const cfg: DumperConfig = get(config);
+  const outDir = get(outputDir);
+
+  try {
+    await invoke("start_dump", {
+      binaryPath: bp,
+      metadataPath: mp,
+      outputDir: outDir,
+      configJson: JSON.stringify(cfg),
+    });
+  } catch (e) {
+    setDumpInProgress(false);
+    errorMessage.set(String(e));
+    appState.set("error");
+    currentScreen.set("error");
+  }
+}
+

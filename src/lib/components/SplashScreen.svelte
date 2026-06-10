@@ -1,6 +1,7 @@
 <script lang="ts">
   import lottie from "lottie-web";
   import { onMount } from "svelte";
+  import { AssistChip, ChipSet } from "noph-ui";
 
   let { onfinished }: { onfinished: () => void } = $props();
   let container: HTMLDivElement;
@@ -18,8 +19,8 @@
     });
     anim.setSpeed(2.5);
 
-    setTimeout(() => titleVisible = true, 400);
-    setTimeout(() => versionVisible = true, 700);
+    setTimeout(() => (titleVisible = true), 400);
+    setTimeout(() => (versionVisible = true), 700);
 
     anim.addEventListener("complete", () => {
       setTimeout(() => {
@@ -36,8 +37,7 @@
 </script>
 
 <div
-  class="fixed inset-0 z-[100] flex items-center justify-center transition-opacity duration-400"
-  style="background: var(--app-bg); color: var(--text-primary);"
+  class="fixed inset-0 z-[100] flex items-center justify-center transition-opacity duration-400 m3-app"
   style:opacity={fadeOut ? 0 : 1}
 >
   <div class="flex flex-col items-center gap-5">
@@ -60,7 +60,9 @@
       style:opacity={versionVisible ? 1 : 0}
       style:transform="scale({versionVisible ? 1 : 0.8})"
     >
-      <span class="app-badge app-badge-muted text-xs px-4 py-1">v5.5</span>
+      <ChipSet>
+        <AssistChip label="v6.0" />
+      </ChipSet>
     </div>
   </div>
 </div>

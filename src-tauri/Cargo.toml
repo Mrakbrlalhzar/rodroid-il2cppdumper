@@ -1,6 +1,6 @@
 [package]
 name = "rodroid-il2cppdumper"
-version = "5.5.0"
+version = "6.0.0"
 description = "Rodroid IL2CPP Dumper - Desktop"
 authors = ["rodroid"]
 edition = "2024"

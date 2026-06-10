@@ -3337,7 +3337,7 @@ dependencies = [
 
 [[package]]
 name = "rodroid-il2cppdumper"
-version = "4.1.0"
+version = "6.0.0"
 dependencies = [
  "byteorder",
  "dotnetdll",

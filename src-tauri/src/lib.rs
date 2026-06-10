@@ -70,6 +70,7 @@ struct BinaryInfo {
 
 struct AppState {
     input_sender: Mutex<Option<std::sync::mpsc::Sender<String>>>,
+    dump_running: Mutex<bool>,
 }
 
 fn emit_log(app: &AppHandle, message: &str) {
@@ -334,6 +335,10 @@ fn detect_format(data: &[u8]) -> &'static str {
     }
 }
 
+fn resolve_codm(config: &Config, metadata: &Metadata) -> bool {
+    config.codm || metadata.variant == MetadataVariant::Codm
+}
+
 fn init_elf(
     data: Vec<u8>,
     metadata: &Metadata,
@@ -449,6 +454,7 @@ fn init_elf(
 
     let elf_exports = elf.list_exported_symbols().unwrap_or_default();
     let mut il2cpp = Il2Cpp::from_elf(&elf);
+    il2cpp.codm = il2cpp.codm || resolve_codm(config, metadata);
     il2cpp.exported_symbols = elf_exports.iter().map(|(n, _)| n.clone()).collect();
     for (name, addr) in elf_exports {
         if name.starts_with("il2cpp_") || name.starts_with("mono_") {
@@ -575,13 +581,14 @@ fn init_pe(
     il2cpp.va_segments = va_segments;
     il2cpp.image_base = pe_image_base;
     il2cpp.is_pe = true;
-    il2cpp.codm = config.codm;
+    il2cpp.codm = resolve_codm(config, metadata);
     il2cpp.arch = Some(if pe.is_32bit {
         crate::disassembler::Architecture::X86
     } else {
         crate::disassembler::Architecture::X64
     });
     il2cpp.init(cr_addr, mr_addr, &|addr| pe.map_vatr(addr))?;
+    il2cpp.data_sections = pe.data_search_sections();
     if let Ok(exports) = pe.list_exported_symbols() {
         il2cpp.exported_symbols = exports.iter().map(|(n, _)| n.clone()).collect();
         for (name, rva) in exports {
@@ -751,10 +758,39 @@ fn init_macho(
             offset: s.fileoff,
         })
         .collect();
-    let mut il2cpp = Il2Cpp::new(macho.stream.clone(), version, macho.is_32bit);
-    il2cpp.va_segments = va_segments;
-    il2cpp.codm = config.codm;
-    il2cpp.init(cr_addr, mr_addr, &|addr| macho.map_vatr(addr))?;
+
+    let try_init = |cr: u64, mr: u64| -> error::Result<Il2Cpp> {
+        let mut il2cpp = Il2Cpp::new(macho.stream.clone(), version, macho.is_32bit);
+        il2cpp.va_segments = va_segments.clone();
+        il2cpp.codm = resolve_codm(config, metadata);
+        il2cpp.init(cr, mr, &|addr| macho.map_vatr(addr))?;
+        Ok(il2cpp)
+    };
+
+    let mut il2cpp = match try_init(cr_addr, mr_addr) {
+        Ok(i) => i,
+        Err(e) => {
+            emit_log(
+                app,
+                &format!(
+                    "Auto-detected CodeRegistration / MetadataRegistration failed to parse ({}). \
+                     Likely a byte-pattern false positive. Please enter the correct addresses \
+                     (e.g. from IDA / Ghidra cross-references on s_Il2CppCodeRegistration / \
+                     s_Il2CppMetadataRegistration).",
+                    e
+                ),
+            );
+            let (cr2, mr2) = match prompt_manual_addresses(app, state) {
+                Some(v) => v,
+                None => return Err(error::Error::Other("Manual mode cancelled.".into())),
+            };
+            cr_addr = cr2;
+            mr_addr = mr2;
+            try_init(cr_addr, mr_addr)?
+        }
+    };
+
+    il2cpp.data_sections = macho.data_search_sections();
 
     if macho.is_32bit {
         for ptr in il2cpp.method_pointers.iter_mut() {
@@ -864,8 +900,9 @@ fn init_nso(
         memsz: stream_len,
         offset: 0,
     }];
-    il2cpp.codm = config.codm;
+    il2cpp.codm = resolve_codm(config, metadata);
     il2cpp.init(cr_addr, mr_addr, &|addr| nso.map_vatr(addr))?;
+    il2cpp.data_sections = nso.data_search_sections();
 
     if let Ok(nso_exports) = nso.list_exported_symbols() {
         il2cpp.exported_symbols = nso_exports.iter().map(|(n, _)| n.clone()).collect();
@@ -963,8 +1000,9 @@ fn init_wasm(
         memsz: stream_len,
         offset: 0,
     }];
-    il2cpp.codm = config.codm;
+    il2cpp.codm = resolve_codm(config, metadata);
     il2cpp.init(cr_addr, mr_addr, &|addr| wasm.map_vatr(addr))?;
+    il2cpp.data_sections = wasm.data_search_sections();
     Ok(il2cpp)
 }
 
@@ -1069,10 +1107,33 @@ fn run_dump(
     .map_err(|e| format!("{e}"))?;
     emit_log(app, "dump.cs generated");
 
+    let static_catalog = if config.dump_static_field_metadata {
+        emit_log(app, "Analyzing thread-static / FieldRVA metadata...");
+        let catalog = crate::output::static_field_exporter::StaticFieldCatalog::collect(
+            &mut executor, &mut metadata, &mut il2cpp, config,
+        ).map_err(|e| format!("{e}"))?;
+        crate::output::static_field_exporter::StaticFieldExporter::write_document(
+            &catalog, &il2cpp, &final_output,
+        ).map_err(|e| format!("{e}"))?;
+        emit_log(
+            app,
+            &format!(
+                "static_metadata.json generated ({} thread-static, {} FieldRVA)",
+                catalog.summary.thread_static_count,
+                catalog.summary.field_rva_count,
+            ),
+        );
+        Some(catalog)
+    } else {
+        None
+    };
+
     if config.generate_struct {
         emit_log(app, "Generating struct...");
-        StructGenerator::write_all(&mut executor, &mut metadata, &mut il2cpp, config, &final_output)
-            .map_err(|e| format!("{e}"))?;
+        StructGenerator::write_all(
+            &mut executor, &mut metadata, &mut il2cpp, config, &final_output,
+            static_catalog.as_ref(),
+        ).map_err(|e| format!("{e}"))?;
         crate::output::embedded_scripts::write_scripts(std::path::Path::new(&final_output))
             .map_err(|e| format!("{e}"))?;
         emit_log(app, "script.json, il2cpp.h, stringliteral.json generated");
@@ -1135,9 +1196,25 @@ fn start_dump(
     metadata_path: String,
     output_dir: String,
     config_json: String,
-) {
+) -> Result<(), String> {
+    {
+        let mut running = state.dump_running.lock().unwrap();
+        if *running {
+            return Err("A dump is already in progress".into());
+        }
+        *running = true;
+    }
+
     let state = Arc::clone(&state);
     std::thread::spawn(move || {
+        struct DumpGuard(Arc<AppState>);
+        impl Drop for DumpGuard {
+            fn drop(&mut self) {
+                *self.0.dump_running.lock().unwrap() = false;
+            }
+        }
+        let _guard = DumpGuard(Arc::clone(&state));
+
         let config: Config = serde_json::from_str(&config_json).unwrap_or_default();
         let app_for_panic = app.clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1200,6 +1277,7 @@ fn start_dump(
             }
         }
     });
+    Ok(())
 }
 
 #[tauri::command]
@@ -1219,6 +1297,7 @@ fn get_default_config() -> String {
 pub fn run() {
     let app_state = Arc::new(AppState {
         input_sender: Mutex::new(None),
+        dump_running: Mutex::new(false),
     });
 
     tauri::Builder::default()

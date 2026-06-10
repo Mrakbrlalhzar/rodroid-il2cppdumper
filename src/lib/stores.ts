@@ -2,6 +2,7 @@ import { writable, derived } from "svelte/store";
 import type { AppState, DumperConfig, BinaryInfo } from "./types";
 import { DEFAULT_CONFIG } from "./types";
 import { type AppLanguage, type ThemeMode, getTranslations } from "./i18n";
+import { setDumpInProgress } from "./dumpState";
 
 export type ScreenState = "idle" | "settings" | "about" | "dumping" | "result" | "error" | "crash" | "splash";
 
@@ -15,11 +16,19 @@ interface PersistedPrefs {
 }
 
 function loadPrefs(): PersistedPrefs {
+  const defaults = defaultPrefs();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaultPrefs(), ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PersistedPrefs>;
+      return {
+        ...defaults,
+        ...parsed,
+        config: { ...DEFAULT_CONFIG, ...parsed.config },
+      };
+    }
   } catch {}
-  return defaultPrefs();
+  return defaults;
 }
 
 function defaultPrefs(): PersistedPrefs {
@@ -42,7 +51,8 @@ const saved = loadPrefs();
 
 export const themeMode = writable<ThemeMode>(saved.themeMode);
 export const language = writable<AppLanguage>(saved.language);
-export const config = writable<DumperConfig>(saved.config);
+export const config = writable<DumperConfig>({ ...DEFAULT_CONFIG, ...saved.config });
+export const configDialogOpen = writable(false);
 export const outputDir = writable<string>(saved.outputDir);
 
 themeMode.subscribe(v => savePrefs({ themeMode: v }));
@@ -66,6 +76,7 @@ export const inputRequest = writable<string | null>(null);
 export const elapsedSeconds = writable(0);
 
 export function resetAll() {
+  setDumpInProgress(false);
   appState.set("idle");
   currentScreen.set("idle");
   logs.set([]);
@@ -80,6 +91,7 @@ export function resetAll() {
 }
 
 export function resetForNewDump() {
+  setDumpInProgress(false);
   appState.set("idle");
   currentScreen.set("idle");
   logs.set([]);
@@ -91,22 +103,12 @@ export function resetForNewDump() {
 
 export function applyTheme(mode: ThemeMode) {
   const html = document.documentElement;
-  const setDark = () => {
-    html.classList.add("dark");
-    html.classList.remove("light-mode");
-    html.style.colorScheme = "dark";
-  };
-  const setLight = () => {
-    html.classList.remove("dark");
-    html.classList.add("light-mode");
-    html.style.colorScheme = "light";
-  };
-  if (mode === "dark") {
-    setDark();
-  } else if (mode === "light") {
-    setLight();
-  } else {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    if (prefersDark) setDark(); else setLight();
-  }
+  const resolved =
+    mode === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : mode;
+  html.setAttribute("data-theme", resolved);
+  html.style.colorScheme = resolved;
 }

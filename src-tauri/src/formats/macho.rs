@@ -138,6 +138,7 @@ pub struct MachO {
     pub stream: BinaryStream,
     pub is_32bit: bool,
     pub codm_apply_fixups: bool,
+    pub is_arm64e: bool,
     pub segments: Vec<Segment>,
     sections: Vec<Section>,
     symbols: Vec<NlistEntry>,
@@ -161,6 +162,7 @@ impl MachO {
             stream: BinaryStream::new(data),
             is_32bit,
             codm_apply_fixups,
+            is_arm64e: false,
             segments: Vec::new(),
             sections: Vec::new(),
             symbols: Vec::new(),
@@ -171,6 +173,24 @@ impl MachO {
         };
         macho.stream.is_32bit = is_32bit;
         macho.load()?;
+        // Apply the linker's rebase pass offline whenever the binary still
+        // carries the info needed to do it. Without this, on-disk pointers
+        // in __mod_init_func / __const / __data stay as RVAs (e.g. raw
+        // 0x04f6aea0 instead of the runtime VA 0x104f6aea0), and downstream
+        // map_vatr -> read_exact blows up with "failed to fill whole buffer"
+        // because the truncated VA maps to a bogus file offset past EOF.
+        //
+        // - chained_fixups: modern format used on arm64e and recent arm64
+        //   App Store builds (LC_DYLD_CHAINED_FIXUPS)
+        // - dyld_info:      legacy format still used by lots of Unity iOS
+        //   builds (LC_DYLD_INFO / LC_DYLD_INFO_ONLY rebase opcodes)
+        //
+        // Only the rebase parts run -- bind / lazy_bind aren't touched.
+        if !macho.codm_apply_fixups
+            && (macho.chained_fixups.is_some() || macho.dyld_info.is_some() || macho.is_arm64e)
+        {
+            macho.codm_apply_fixups = true;
+        }
         if macho.codm_apply_fixups {
             let _ = macho.process_apple_fixups();
         }
@@ -186,8 +206,10 @@ impl MachO {
             return Err(Error::InvalidFormat("Invalid Mach-O magic".into()));
         }
 
-        let _cputype = self.stream.read_i32()?;
-        let _cpusubtype = self.stream.read_i32()?;
+        let cputype = self.stream.read_i32()? as u32;
+        let cpusubtype = self.stream.read_i32()? as u32;
+        // CPU_TYPE_ARM64 = 0x0100000C, CPU_SUBTYPE_ARM64E = 2 (low 24 bits)
+        self.is_arm64e = cputype == 0x0100000C && (cpusubtype & 0x00FFFFFF) == 2;
         let _filetype = self.stream.read_u32()?;
         let ncmds = self.stream.read_u32()?;
         let _sizeofcmds = self.stream.read_u32()?;
@@ -378,7 +400,7 @@ impl MachO {
         if let Some(off) = try_addr(addr) {
             return Ok(off);
         }
-        if self.codm_apply_fixups && (addr >> 52) != 0 {
+        if (self.codm_apply_fixups || self.is_arm64e) && (addr >> 52) != 0 {
             let target_low = addr & 0x0000_000F_FFFF_FFFF;
             let fixed = target_low.wrapping_add(self.vmaddr);
             if let Some(off) = try_addr(fixed) {
@@ -638,8 +660,32 @@ impl MachO {
         }
     }
 
-    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
+    /// Data sections scanned for v27+ metadata usages (FieldRva pointers, etc.).
+    pub fn data_search_sections(&self) -> Vec<SearchSection> {
         let mut data_list = Vec::new();
+        for sect in &self.sections {
+            let search_section = SearchSection::new(
+                sect.offset as u64,
+                sect.offset as u64 + sect.size,
+                sect.addr,
+                sect.addr + sect.size,
+            );
+            if self.is_32bit {
+                if sect.sectname == "__const" {
+                    data_list.push(search_section);
+                }
+            } else if sect.sectname == "__const"
+                || sect.sectname == "__cstring"
+                || sect.sectname == "__data"
+            {
+                data_list.push(search_section);
+            }
+        }
+        data_list
+    }
+
+    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
+        let data_list = self.data_search_sections();
         let mut exec_list = Vec::new();
         let mut bss_list = Vec::new();
         let mut all_sections = Vec::new();
@@ -658,14 +704,6 @@ impl MachO {
                 exec_list.push(search_section);
             } else if sect.flags == 1 {
                 bss_list.push(search_section);
-            } else if self.is_32bit {
-                if sect.sectname == "__const" {
-                    data_list.push(search_section);
-                }
-            } else {
-                if sect.sectname == "__const" || sect.sectname == "__cstring" || sect.sectname == "__data" {
-                    data_list.push(search_section);
-                }
             }
         }
 

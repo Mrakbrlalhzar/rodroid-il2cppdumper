@@ -404,6 +404,12 @@ impl Il2CppDecompiler {
                 );
             }
 
+            crate::output::static_field_exporter::write_dump_cs_field_annotations(
+                buf, executor, metadata, il2cpp, config,
+                type_def, type_def_index, i, i - type_def.field_start as usize,
+                &field_def, &field_type, indent,
+            )?;
+
             buf.push_str(indent);
             buf.push('\t');
 

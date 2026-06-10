@@ -351,9 +351,30 @@ impl Nso {
         0
     }
 
+    pub fn data_search_sections(&self) -> Vec<SearchSection> {
+        let mut data_list = Vec::new();
+        if self.segments.len() >= 3 {
+            let rodata = &self.segments[1];
+            data_list.push(SearchSection::new(
+                rodata.file_offset,
+                rodata.file_offset + rodata.decompressed_size,
+                rodata.memory_offset,
+                rodata.memory_offset + rodata.decompressed_size,
+            ));
+            let data_seg = &self.segments[2];
+            data_list.push(SearchSection::new(
+                data_seg.file_offset,
+                data_seg.file_offset + data_seg.decompressed_size,
+                data_seg.memory_offset,
+                data_seg.memory_offset + data_seg.decompressed_size,
+            ));
+        }
+        data_list
+    }
+
     pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
         let mut exec_list = Vec::new();
-        let mut data_list = Vec::new();
+        let data_list = self.data_search_sections();
         let mut bss_list = Vec::new();
         let mut all = Vec::new();
 
@@ -366,12 +387,10 @@ impl Nso {
             let rodata = &self.segments[1];
             let s = SearchSection::new(rodata.file_offset, rodata.file_offset + rodata.decompressed_size, rodata.memory_offset, rodata.memory_offset + rodata.decompressed_size);
             all.push(s.clone());
-            data_list.push(s);
 
             let data_seg = &self.segments[2];
             let s = SearchSection::new(data_seg.file_offset, data_seg.file_offset + data_seg.decompressed_size, data_seg.memory_offset, data_seg.memory_offset + data_seg.decompressed_size);
             all.push(s.clone());
-            data_list.push(s);
         }
 
         if let Some(bss) = &self.bss_segment {

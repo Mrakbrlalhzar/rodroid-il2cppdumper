@@ -1,5 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { Button, TextField } from "noph-ui";
+  import { Icon } from "noph-ui/icons";
   import { inputRequest, t } from "$lib/stores";
 
   let dumpAddress = $state("");
@@ -42,75 +44,60 @@
   let manualOpen = $derived($inputRequest === "manual_addresses");
 </script>
 
-<!-- Dump Address Dialog -->
 {#if dumpOpen}
-  <div class="app-dialog">
-    <button type="button" class="app-backdrop cursor-default" aria-label="Close dialog" onclick={skipDumpAddress}></button>
-    <div class="app-card w-full max-w-md mx-4 p-6 space-y-5 shadow-2xl relative z-10">
+  <div class="m3-dialog-scrim" role="presentation">
+    <button type="button" class="absolute inset-0 cursor-default" aria-label="Close dialog" onclick={skipDumpAddress}></button>
+    <div class="m3-dialog p-6 space-y-5 max-w-md">
       <div class="space-y-2">
         <div class="flex items-center gap-2.5">
-          <div class="size-8 rounded-lg flex items-center justify-center" style="background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <div class="m3-icon-tile size-9">
+            <Icon>refresh</Icon>
           </div>
           <h3 class="text-lg font-semibold">{$t.dialog_dump_address_title}</h3>
         </div>
-        <p class="text-sm" style="color: var(--text-secondary);">{$t.dialog_dump_address_desc}</p>
+        <p class="text-sm m3-secondary">{$t.dialog_dump_address_desc}</p>
       </div>
-      <input
-        type="text"
-        bind:value={dumpAddress}
-        placeholder="0x10000"
-        class="app-input font-mono"
-      />
-      <div class="flex justify-end gap-2">
-        <button type="button" class="app-btn app-btn-ghost" onclick={skipDumpAddress}>{$t.dialog_skip}</button>
-        <button type="button" class="app-btn app-btn-primary" onclick={submitDumpAddress}>OK</button>
+      <TextField variant="filled" placeholder="0x10000" bind:value={dumpAddress} />
+      <div class="m3-dialog-actions">
+        <Button variant="text" onclick={skipDumpAddress}>{$t.dialog_skip}</Button>
+        <Button variant="filled" onclick={submitDumpAddress}>OK</Button>
       </div>
     </div>
   </div>
 {/if}
 
-<!-- Manual Addresses Dialog -->
 {#if manualOpen}
-  <div class="app-dialog">
-    <button type="button" class="app-backdrop cursor-default" aria-label="Close dialog" onclick={cancelManual}></button>
-    <div class="app-card w-full max-w-md mx-4 p-6 space-y-5 shadow-2xl relative z-10">
+  <div class="m3-dialog-scrim" role="presentation">
+    <button type="button" class="absolute inset-0 cursor-default" aria-label="Close dialog" onclick={cancelManual}></button>
+    <div class="m3-dialog p-6 space-y-5 max-w-md">
       <div class="space-y-2">
         <div class="flex items-center gap-2.5">
-          <div class="size-8 rounded-lg flex items-center justify-center" style="background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <div class="m3-icon-tile size-9">
+            <Icon>code</Icon>
           </div>
           <h3 class="text-lg font-semibold">{$t.dialog_manual_title}</h3>
         </div>
-        <p class="text-sm" style="color: var(--text-secondary);">{$t.dialog_manual_desc}</p>
+        <p class="text-sm m3-secondary">{$t.dialog_manual_desc}</p>
       </div>
       <div class="space-y-4">
-        <div class="space-y-2">
-          <label for="input-code-reg" class="text-xs uppercase tracking-widest font-medium" style="color: var(--text-secondary);">{$t.setting_code_registration}</label>
-          <input
-            id="input-code-reg"
-            type="text"
-            bind:value={codeReg}
-            placeholder="0x654aef0"
-            class="app-input font-mono"
-            style={codeReg && !isValidHex(codeReg) ? 'border-color: var(--error); box-shadow: 0 0 0 2px var(--error-ring);' : ''}
-          />
-        </div>
-        <div class="space-y-2">
-          <label for="input-meta-reg" class="text-xs uppercase tracking-widest font-medium" style="color: var(--text-secondary);">{$t.setting_metadata_registration}</label>
-          <input
-            id="input-meta-reg"
-            type="text"
-            bind:value={metaReg}
-            placeholder="0x66c4998"
-            class="app-input font-mono"
-            style={metaReg && !isValidHex(metaReg) ? 'border-color: var(--error); box-shadow: 0 0 0 2px var(--error-ring);' : ''}
-          />
-        </div>
+        <TextField
+          label={$t.setting_code_registration}
+          variant="filled"
+          placeholder="0x654aef0"
+          bind:value={codeReg}
+          aria-invalid={codeReg ? !isValidHex(codeReg) : false}
+        />
+        <TextField
+          label={$t.setting_metadata_registration}
+          variant="filled"
+          placeholder="0x66c4998"
+          bind:value={metaReg}
+          aria-invalid={metaReg ? !isValidHex(metaReg) : false}
+        />
       </div>
-      <div class="flex justify-end gap-2">
-        <button type="button" class="app-btn app-btn-ghost" onclick={cancelManual}>Cancel</button>
-        <button type="button" class="app-btn app-btn-primary" disabled={!isValidHex(codeReg) || !isValidHex(metaReg)} onclick={submitManualAddresses}>OK</button>
+      <div class="m3-dialog-actions">
+        <Button variant="text" onclick={cancelManual}>Cancel</Button>
+        <Button variant="filled" disabled={!isValidHex(codeReg) || !isValidHex(metaReg)} onclick={submitManualAddresses}>OK</Button>
       </div>
     </div>
   </div>

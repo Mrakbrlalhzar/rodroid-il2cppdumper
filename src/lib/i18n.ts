@@ -22,7 +22,8 @@ type TranslationKeys = {
   select_binary: string; select_metadata: string; start_dump: string;
   new_dump: string; try_again: string; dump_again: string; dump_options: string;
   label_binary: string; label_metadata: string; label_log: string;
-  label_output: string; label_generation: string; label_advanced: string;
+  label_output: string; label_generation: string; label_advanced_generics: string; label_advanced: string;
+  label_format: string; label_unity: string;
   label_appearance: string; label_theme: string; label_language: string;
   label_output_dir: string; setting_output_dir_desc: string; output_reset: string;
   status_processing: string; dump_complete: string; dump_failed: string;
@@ -34,6 +35,20 @@ type TranslationKeys = {
   setting_generate_struct: string; setting_generate_dummy_dll: string;
   setting_dummy_dll_add_token: string; setting_split_dump_per_type: string;
   setting_generate_generics_dump: string;
+  setting_dump_generics_rgctx: string;
+  setting_dump_generics_method_specs: string;
+  setting_dump_generics_custom_attributes: string;
+  setting_dump_generics_string_literals: string;
+  setting_dump_generics_metadata_usages: string;
+  setting_dump_generics_vtables: string;
+  setting_dump_generics_interfaces: string;
+  setting_codm: string;
+  label_static_metadata: string;
+  setting_dump_static_metadata: string;
+  setting_dump_field_rva_data: string;
+  setting_max_field_rva_dump_bytes: string;
+  setting_dump_disassembly_target: string;
+  dialog_ok: string; dialog_cancel: string;
   setting_force_il2cpp_version: string; setting_force_version_label: string;
   setting_force_dump: string; setting_no_redirected_pointer: string;
   label_disassembly: string; setting_dump_disassembly: string;
@@ -63,7 +78,9 @@ const en: TranslationKeys = {
   start_dump: "Start Dump", new_dump: "New Dump", try_again: "Try Again", dump_again: "Dump Again",
   dump_options: "Dump Options",
   label_binary: "IL2CPP Binary", label_metadata: "Metadata", label_log: "Log",
-  label_output: "Output", label_generation: "Generation", label_advanced: "Advanced",
+  label_output: "Output", label_generation: "Generation",
+  label_advanced_generics: "Advanced Generics Dump", label_advanced: "Advanced",
+  label_format: "Format", label_unity: "Unity",
   label_appearance: "Appearance", label_theme: "Theme", label_language: "Language",
   label_output_dir: "Output Directory", setting_output_dir_desc: "Where dump results are saved",
   output_reset: "Reset to Default",
@@ -76,9 +93,23 @@ const en: TranslationKeys = {
   setting_generate_struct: "Generate Struct", setting_generate_dummy_dll: "Generate Dummy DLL",
   setting_dummy_dll_add_token: "Dummy DLL Add Token", setting_split_dump_per_type: "Split Per Type",
   setting_generate_generics_dump: "Generate Generics Dump",
+  setting_dump_generics_rgctx: "Dump RGCTX",
+  setting_dump_generics_method_specs: "Dump MethodSpecs",
+  setting_dump_generics_custom_attributes: "Dump Custom Attributes",
+  setting_dump_generics_string_literals: "Dump String Literals",
+  setting_dump_generics_metadata_usages: "Dump Metadata Usages",
+  setting_dump_generics_vtables: "Dump VTables",
+  setting_dump_generics_interfaces: "Dump Interfaces",
+  setting_codm: "Force CODM Metadata Variant",
+  label_static_metadata: "Static Field Metadata",
+  setting_dump_static_metadata: "Export Thread-Static / FieldRVA",
+  setting_dump_field_rva_data: "Include FieldRVA Hex Data",
+  setting_max_field_rva_dump_bytes: "Max FieldRVA Dump Bytes",
   setting_force_il2cpp_version: "Force IL2CPP Version", setting_force_version_label: "IL2CPP Version",
   setting_force_dump: "Force Dump", setting_no_redirected_pointer: "No Redirected Pointer",
   label_disassembly: "Disassembly", setting_dump_disassembly: "Enable Disassembly",
+  setting_dump_disassembly_target: "Output Target",
+  dialog_ok: "OK", dialog_cancel: "Cancel",
   setting_dump_disassembly_hex_bytes: "Hex Bytes",
   setting_dump_disassembly_field_names: "Field Names",
   setting_dump_disassembly_annotations: "Annotations",
@@ -90,7 +121,7 @@ const en: TranslationKeys = {
   dialog_manual_desc: "Auto-detection failed. Enter CodeRegistration and MetadataRegistration addresses manually.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v5.5", about_description: "IL2CPP binary dumper for Unity games — powered by Rust",
+  about_version: "v6.0", about_description: "IL2CPP binary dumper for Unity games — powered by Rust",
   about_developer: "Developer", about_powered_by: "Powered by Rust 🦀",
   about_community: "Community",
   about_channel_1: "Telegram Channel", about_channel_1_desc: "Updates & releases",
@@ -110,7 +141,9 @@ const sq: TranslationKeys = {
   start_dump: "Fillo Dump", new_dump: "Dump i Ri", try_again: "Provoni Përsëri", dump_again: "Dump Përsëri",
   dump_options: "Opsionet e Dump",
   label_binary: "IL2CPP Binar", label_metadata: "Metadata", label_log: "Regjistri",
-  label_output: "Prodhimi", label_generation: "Gjenerimi", label_advanced: "Avancuar",
+  label_output: "Prodhimi", label_generation: "Gjenerimi",
+  label_advanced_generics: "Nxjerrja e Avancuar e Generics", label_advanced: "Avancuar",
+  label_format: "Formati", label_unity: "Unity",
   label_appearance: "Pamja", label_theme: "Tema", label_language: "Gjuha",
   label_output_dir: "Direktoria e Prodhimit", setting_output_dir_desc: "Ku ruhen rezultatet e dump",
   output_reset: "Rikthe Parazgjedhjen",
@@ -123,9 +156,23 @@ const sq: TranslationKeys = {
   setting_generate_struct: "Gjenero Struct", setting_generate_dummy_dll: "Gjenero Dummy DLL",
   setting_dummy_dll_add_token: "Dummy DLL Shto Token", setting_split_dump_per_type: "Ndaj Dump Sipas Tipit",
   setting_generate_generics_dump: "Gjenero Nxjerrjen e Generics",
+  setting_dump_generics_rgctx: "Nxirr RGCTX",
+  setting_dump_generics_method_specs: "Nxirr MethodSpecs",
+  setting_dump_generics_custom_attributes: "Nxirr Custom Attributes",
+  setting_dump_generics_string_literals: "Nxirr String Literals",
+  setting_dump_generics_metadata_usages: "Nxirr Metadata Usages",
+  setting_dump_generics_vtables: "Nxirr VTables",
+  setting_dump_generics_interfaces: "Nxirr Interfaces",
+  setting_codm: "Detyro Variantin e Metadata-ve CODM",
+  label_static_metadata: "Metadata e Fushave Statike",
+  setting_dump_static_metadata: "Eksporto Thread-Static / FieldRVA",
+  setting_dump_field_rva_data: "Përfshi të Dhënat Hex FieldRVA",
+  setting_max_field_rva_dump_bytes: "Maks. Bajte Dump FieldRVA",
   setting_force_il2cpp_version: "Detyroni Versionin IL2CPP", setting_force_version_label: "Versioni IL2CPP",
   setting_force_dump: "Detyroni Dump", setting_no_redirected_pointer: "Pa Pointer të Ridrejtuar",
   label_disassembly: "Disassembly", setting_dump_disassembly: "Aktivizo Disassembly",
+  setting_dump_disassembly_target: "Objektivi i Daljes",
+  dialog_ok: "OK", dialog_cancel: "Anulo",
   setting_dump_disassembly_hex_bytes: "Hex Bytes",
   setting_dump_disassembly_field_names: "Emrat e Fushave",
   setting_dump_disassembly_annotations: "Shënimet",
@@ -137,7 +184,7 @@ const sq: TranslationKeys = {
   dialog_manual_desc: "Zbulimi automatik dështoi. Vendos adresat CodeRegistration dhe MetadataRegistration manualisht.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v5.5", about_description: "IL2CPP dumper binar për lojëra Unity — mundësuar nga Rust",
+  about_version: "v6.0", about_description: "IL2CPP dumper binar për lojëra Unity — mundësuar nga Rust",
   about_developer: "Zhvilluesi", about_powered_by: "Mundësuar nga Rust 🦀",
   about_community: "Komuniteti",
   about_channel_1: "Kanali Telegram", about_channel_1_desc: "Përditësime & publikime",
@@ -157,7 +204,9 @@ const ar: TranslationKeys = {
   start_dump: "بدء التفريغ", new_dump: "تفريغ جديد", try_again: "حاول مرة أخرى", dump_again: "تفريغ مرة أخرى",
   dump_options: "خيارات التفريغ",
   label_binary: "IL2CPP ثنائي", label_metadata: "البيانات الوصفية", label_log: "السجل",
-  label_output: "المخرجات", label_generation: "التوليد", label_advanced: "متقدم",
+  label_output: "المخرجات", label_generation: "التوليد",
+  label_advanced_generics: "استخراج Generics المتقدم", label_advanced: "متقدم",
+  label_format: "التنسيق", label_unity: "Unity",
   label_appearance: "المظهر", label_theme: "السمة", label_language: "اللغة",
   label_output_dir: "مجلد المخرجات", setting_output_dir_desc: "مكان حفظ نتائج التفريغ",
   output_reset: "إعادة التعيين للافتراضي",
@@ -170,9 +219,23 @@ const ar: TranslationKeys = {
   setting_generate_struct: "توليد Struct", setting_generate_dummy_dll: "توليد Dummy DLL",
   setting_dummy_dll_add_token: "إضافة Token لـ Dummy DLL", setting_split_dump_per_type: "تقسيم التفريغ حسب النوع",
   setting_generate_generics_dump: "إنشاء استخراج Generics",
+  setting_dump_generics_rgctx: "استخراج RGCTX",
+  setting_dump_generics_method_specs: "استخراج MethodSpecs",
+  setting_dump_generics_custom_attributes: "استخراج Custom Attributes",
+  setting_dump_generics_string_literals: "استخراج String Literals",
+  setting_dump_generics_metadata_usages: "استخراج Metadata Usages",
+  setting_dump_generics_vtables: "استخراج VTables",
+  setting_dump_generics_interfaces: "استخراج Interfaces",
+  setting_codm: "فرض نسخة بيانات CODM",
+  label_static_metadata: "بيانات الحقول الثابتة",
+  setting_dump_static_metadata: "تصدير Thread-Static / FieldRVA",
+  setting_dump_field_rva_data: "تضمين بيانات FieldRVA السداسية",
+  setting_max_field_rva_dump_bytes: "الحد الأقصى لبايتات FieldRVA",
   setting_force_il2cpp_version: "فرض إصدار IL2CPP", setting_force_version_label: "إصدار IL2CPP",
   setting_force_dump: "فرض التفريغ", setting_no_redirected_pointer: "بدون مؤشر إعادة التوجيه",
   label_disassembly: "Disassembly", setting_dump_disassembly: "تفعيل Disassembly",
+  setting_dump_disassembly_target: "هدف الإخراج",
+  dialog_ok: "موافق", dialog_cancel: "إلغاء",
   setting_dump_disassembly_hex_bytes: "Hex Bytes",
   setting_dump_disassembly_field_names: "أسماء الحقول",
   setting_dump_disassembly_annotations: "التعليقات التوضيحية",
@@ -184,7 +247,7 @@ const ar: TranslationKeys = {
   dialog_manual_desc: "فشل الاكتشاف التلقائي. أدخل عناوين CodeRegistration و MetadataRegistration يدوياً.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v5.5", about_description: "أداة تفريغ IL2CPP لألعاب Unity — مدعوم بـ Rust",
+  about_version: "v6.0", about_description: "أداة تفريغ IL2CPP لألعاب Unity — مدعوم بـ Rust",
   about_developer: "المطور", about_powered_by: "مدعوم بـ Rust 🦀",
   about_community: "المجتمع",
   about_channel_1: "قناة تيليجرام", about_channel_1_desc: "تحديثات & إصدارات",
@@ -204,7 +267,9 @@ const es: TranslationKeys = {
   start_dump: "Iniciar Dump", new_dump: "Nuevo Dump", try_again: "Intentar de Nuevo", dump_again: "Dump de Nuevo",
   dump_options: "Opciones de Dump",
   label_binary: "IL2CPP Binario", label_metadata: "Metadata", label_log: "Registro",
-  label_output: "Salida", label_generation: "Generación", label_advanced: "Avanzado",
+  label_output: "Salida", label_generation: "Generación",
+  label_advanced_generics: "Volcado Avanzado de Generics", label_advanced: "Avanzado",
+  label_format: "Formato", label_unity: "Unity",
   label_appearance: "Apariencia", label_theme: "Tema", label_language: "Idioma",
   label_output_dir: "Directorio de Salida", setting_output_dir_desc: "Dónde se guardan los resultados del dump",
   output_reset: "Restablecer por Defecto",
@@ -217,9 +282,23 @@ const es: TranslationKeys = {
   setting_generate_struct: "Generar Struct", setting_generate_dummy_dll: "Generar Dummy DLL",
   setting_dummy_dll_add_token: "Añadir Token a Dummy DLL", setting_split_dump_per_type: "Dividir Volcado por Tipo",
   setting_generate_generics_dump: "Generar Volcado de Generics",
+  setting_dump_generics_rgctx: "Volcar RGCTX",
+  setting_dump_generics_method_specs: "Volcar MethodSpecs",
+  setting_dump_generics_custom_attributes: "Volcar Atributos Personalizados",
+  setting_dump_generics_string_literals: "Volcar String Literals",
+  setting_dump_generics_metadata_usages: "Volcar Metadata Usages",
+  setting_dump_generics_vtables: "Volcar VTables",
+  setting_dump_generics_interfaces: "Volcar Interfaces",
+  setting_codm: "Forzar Variante de Metadatos CODM",
+  label_static_metadata: "Metadatos de Campos Estáticos",
+  setting_dump_static_metadata: "Exportar Thread-Static / FieldRVA",
+  setting_dump_field_rva_data: "Incluir Datos Hex FieldRVA",
+  setting_max_field_rva_dump_bytes: "Máx. Bytes de Dump FieldRVA",
   setting_force_il2cpp_version: "Forzar Versión IL2CPP", setting_force_version_label: "Versión IL2CPP",
   setting_force_dump: "Forzar Dump", setting_no_redirected_pointer: "Sin Puntero Redirigido",
   label_disassembly: "Disassembly", setting_dump_disassembly: "Habilitar Disassembly",
+  setting_dump_disassembly_target: "Objetivo de Salida",
+  dialog_ok: "OK", dialog_cancel: "Cancelar",
   setting_dump_disassembly_hex_bytes: "Hex Bytes",
   setting_dump_disassembly_field_names: "Nombres de Campos",
   setting_dump_disassembly_annotations: "Anotaciones",
@@ -231,7 +310,7 @@ const es: TranslationKeys = {
   dialog_manual_desc: "La detección automática falló. Ingrese las direcciones CodeRegistration y MetadataRegistration manualmente.",
   setting_code_registration: "CodeRegistration (hex)",
   setting_metadata_registration: "MetadataRegistration (hex)",
-  about_version: "v5.5", about_description: "IL2CPP binary dumper para juegos Unity — impulsado por Rust",
+  about_version: "v6.0", about_description: "IL2CPP binary dumper para juegos Unity — impulsado por Rust",
   about_developer: "Desarrollador", about_powered_by: "Impulsado por Rust 🦀",
   about_community: "Comunidad",
   about_channel_1: "Canal de Telegram", about_channel_1_desc: "Actualizaciones & lanzamientos",

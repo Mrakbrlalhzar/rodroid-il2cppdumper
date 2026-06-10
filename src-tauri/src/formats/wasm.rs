@@ -211,9 +211,23 @@ impl Wasm {
         offset
     }
 
+    pub fn data_search_sections(&self) -> Vec<SearchSection> {
+        self.data_segments
+            .iter()
+            .map(|segment| {
+                SearchSection::new(
+                    segment.data_offset,
+                    segment.data_offset + segment.size as u64,
+                    segment.offset as u64,
+                    segment.offset as u64 + segment.size as u64,
+                )
+            })
+            .collect()
+    }
+
     pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
         let mut exec_list = Vec::new();
-        let mut data_list = Vec::new();
+        let data_list = self.data_search_sections();
         let mut all = Vec::new();
 
         if let Some(code) = &self.code_section {
@@ -230,7 +244,6 @@ impl Wasm {
                 segment.offset as u64 + segment.size as u64,
             );
             all.push(s.clone());
-            data_list.push(s);
         }
 
         let bss = data_list.clone();

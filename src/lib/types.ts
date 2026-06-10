@@ -37,6 +37,9 @@ export interface DumperConfig {
   compilerLayout: string;
   useTopologicalSort: boolean;
   codm: boolean;
+  dumpStaticFieldMetadata: boolean;
+  dumpFieldRvaData: boolean;
+  maxFieldRvaDumpBytes: number;
 }
 
 export interface BinaryInfo {
@@ -95,4 +98,7 @@ export const DEFAULT_CONFIG: DumperConfig = {
   compilerLayout: "GCC",
   useTopologicalSort: true,
   codm: false,
+  dumpStaticFieldMetadata: false,
+  dumpFieldRvaData: false,
+  maxFieldRvaDumpBytes: 4096,
 };

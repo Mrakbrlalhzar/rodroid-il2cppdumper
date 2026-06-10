@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { CircularProgress, LinearProgress } from "noph-ui";
+  import { Icon } from "noph-ui/icons";
   import { logs, elapsedSeconds, t } from "$lib/stores";
   import { onMount, onDestroy, tick } from "svelte";
 
@@ -6,10 +8,12 @@
   let timer: ReturnType<typeof setInterval>;
 
   onMount(() => {
-    timer = setInterval(() => elapsedSeconds.update(n => n + 1), 1000);
+    timer = setInterval(() => elapsedSeconds.update((n) => n + 1), 1000);
   });
 
-  onDestroy(() => { if (timer) clearInterval(timer); });
+  onDestroy(() => {
+    if (timer) clearInterval(timer);
+  });
 
   function formatTime(s: number): string {
     const m = Math.floor(s / 60);
@@ -18,66 +22,64 @@
   }
 
   function getLogStyle(log: string): { color: string; icon: string } {
-    if (log.startsWith("ERROR")) return { color: "var(--error)", icon: "\u2715" };
-    if (log.startsWith("Done!")) return { color: "var(--accent)", icon: "\u2605" };
-    if (log.includes("generated")) return { color: "var(--success)", icon: "\u2713" };
-    if (log.startsWith("Warning")) return { color: "var(--warning)", icon: "!" };
-    if (log.includes("Detected") || log.includes("Found") || log.includes("Registration")) return { color: "var(--accent)", icon: "\u25C6" };
-    return { color: "var(--text-secondary)", icon: "\u203A" };
+    if (log.startsWith("ERROR")) return { color: "var(--np-color-error)", icon: "error" };
+    if (log.startsWith("Done!")) return { color: "var(--np-color-primary)", icon: "check_circle" };
+    if (log.includes("generated")) return { color: "var(--np-color-tertiary)", icon: "check" };
+    if (log.startsWith("Warning")) return { color: "var(--np-color-secondary)", icon: "warning" };
+    if (log.includes("Detected") || log.includes("Found") || log.includes("Registration"))
+      return { color: "var(--np-color-primary)", icon: "info" };
+    return { color: "var(--np-color-on-surface-variant)", icon: "terminal" };
   }
 
   $effect(() => {
     if ($logs.length > 0 && logContainer) {
-      tick().then(() => { logContainer.scrollTop = logContainer.scrollHeight; });
+      tick().then(() => {
+        logContainer.scrollTop = logContainer.scrollHeight;
+      });
     }
   });
 </script>
 
-<div class="flex flex-col h-full p-4 gap-3">
-  <!-- Status Card -->
-  <div class="app-card p-4">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="size-10 rounded-xl flex items-center justify-center" style="background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring);">
-          <div class="size-5 border-2 rounded-full animate-spin" style="border-color: var(--accent); border-top-color: transparent;"></div>
-        </div>
-        <div>
+<div class="flex flex-col h-full p-4 gap-3 animate-slide-up">
+  <div class="m3-surface p-4 space-y-4">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <CircularProgress fourColor indeterminate --np-circular-progress-size="2.5rem" />
+        <div class="min-w-0">
           <p class="text-sm font-semibold">{$t.status_processing}</p>
-          <p class="text-xs" style="color: var(--text-secondary);">{$logs.length} operations</p>
+          <p class="text-xs m3-secondary">{$logs.length} operations</p>
         </div>
       </div>
-      <div class="px-3 py-1.5 rounded-lg font-mono" style="background: var(--input-bg); border: 1px solid var(--input-border);">
-        <span class="text-sm font-bold tabular-nums" style="color: var(--accent);">{formatTime($elapsedSeconds)}</span>
+      <div
+        class="px-3 py-1.5 rounded-xl font-mono shrink-0"
+        style="background: var(--np-color-surface-container-highest);"
+      >
+        <span class="text-sm font-bold tabular-nums" style="color: var(--np-color-primary);">{formatTime($elapsedSeconds)}</span>
       </div>
     </div>
-    <div class="mt-3 h-1.5 rounded-full overflow-hidden" style="background: var(--input-bg);">
-      <div class="h-full rounded-full animate-pulse" style="background: var(--accent); width: 100%;"></div>
-    </div>
+    <LinearProgress fourColor indeterminate />
   </div>
 
-  <!-- Log Card -->
-  <div class="app-card flex-1 flex flex-col min-h-0 overflow-hidden">
-    <div class="py-3 px-4 border-b" style="border-color: var(--card-border);">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="size-2 rounded-full animate-pulse" style="background: var(--success);"></span>
-          <span class="text-xs font-semibold uppercase tracking-widest" style="color: var(--text-secondary);">Live Output</span>
-        </div>
-        <span class="app-badge app-badge-muted text-[10px]">{$logs.length} lines</span>
+  <div class="m3-surface flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div class="py-3 px-4 border-b flex items-center justify-between" style="border-color: var(--np-color-outline-variant);">
+      <div class="flex items-center gap-2">
+        <span class="size-2 rounded-full animate-pulse" style="background: var(--np-color-tertiary);"></span>
+        <span class="text-xs font-semibold uppercase tracking-widest m3-secondary">Live Output</span>
       </div>
+      <span class="m3-badge m3-badge-muted">{$logs.length} lines</span>
     </div>
     <div bind:this={logContainer} class="flex-1 overflow-y-auto p-3 space-y-px">
       {#each $logs as log, i}
         {@const style = getLogStyle(log)}
-        <div class="flex items-start gap-2 py-0.5 px-2 -mx-2 rounded-md transition-colors group" style:--log-color={style.color}>
-          <span class="text-[10px] font-mono mt-1 w-5 text-right shrink-0 tabular-nums" style="color: var(--text-secondary); opacity: 0.5;">{i + 1}</span>
-          <span class="text-[10px] mt-1 w-3 shrink-0 opacity-60" style="color: var(--log-color);">{style.icon}</span>
-          <span class="text-[13px] font-mono break-all leading-relaxed" style="color: var(--log-color);">{log}</span>
+        <div class="flex items-start gap-2 py-0.5 px-2 -mx-2 rounded-lg">
+          <span class="text-[10px] font-mono mt-1 w-5 text-right shrink-0 tabular-nums m3-secondary opacity-60">{i + 1}</span>
+          <span class="mt-0.5 shrink-0" style="color: {style.color};"><Icon>{style.icon}</Icon></span>
+          <span class="text-[13px] font-mono break-all leading-relaxed" style="color: {style.color};">{log}</span>
         </div>
       {/each}
       {#if $logs.length === 0}
         <div class="flex items-center justify-center h-full">
-          <p class="text-sm" style="color: var(--text-secondary);">Waiting for output...</p>
+          <p class="text-sm m3-secondary">Waiting for output...</p>
         </div>
       {/if}
     </div>

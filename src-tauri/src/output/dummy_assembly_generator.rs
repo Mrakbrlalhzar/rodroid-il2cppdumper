@@ -35,6 +35,8 @@ struct AttrCtors {
     token_ctor: MethodRefIndex,
     attribute_ctor: MethodRefIndex,
     metadata_offset_ctor: MethodRefIndex,
+    thread_static_ctor: MethodRefIndex,
+    field_rva_ctor: MethodRefIndex,
 }
 
 fn make_named_string_attr<'a>(ctor: MethodRefIndex, fields: Vec<(&str, String)>) -> Attribute<'a> {
@@ -85,6 +87,8 @@ fn setup_il2cpp_dummy_dll_refs(resolution: &mut Resolution<'_>) -> AttrCtors {
         token_ctor: push_attr_ctor(resolution, dummy_asm_ref, "TokenAttribute".to_string()),
         attribute_ctor: push_attr_ctor(resolution, dummy_asm_ref, "AttributeAttribute".to_string()),
         metadata_offset_ctor: push_attr_ctor(resolution, dummy_asm_ref, "MetadataOffsetAttribute".to_string()),
+        thread_static_ctor: push_attr_ctor(resolution, dummy_asm_ref, "ThreadStaticAttribute".to_string()),
+        field_rva_ctor: push_attr_ctor(resolution, dummy_asm_ref, "FieldRvaAttribute".to_string()),
     }
 }
 
@@ -139,7 +143,7 @@ pub fn generate_dummy_dlls(
     executor: &mut Il2CppExecutor,
     metadata: &mut Metadata,
     il2cpp: &mut Il2Cpp,
-    _config: &Config,
+    config: &Config,
     output_dir: &str,
 ) -> Result<()> {
     let dummy_dir = Path::new(output_dir).join("DummyDll");
@@ -434,6 +438,45 @@ pub fn generate_dummy_dlls(
                                         attr_ctors.field_offset_ctor,
                                         vec![("Offset", format!("0x{:X}", field_offset))],
                                     ));
+                                }
+
+                                if config.dump_static_field_metadata {
+                                    if let Some(ft_ref) = ft {
+                                        let layout = crate::il2cpp::field_layout::analyze_field_layout(
+                                            metadata,
+                                            il2cpp,
+                                            &type_def,
+                                            index,
+                                            (fi - type_def.field_start) as usize,
+                                            fi as usize,
+                                            field_def,
+                                            ft_ref,
+                                            config.max_field_rva_dump_bytes,
+                                        );
+                                        if layout.is_thread_static && is_static {
+                                            field.attributes.push(make_named_string_attr(
+                                                attr_ctors.thread_static_ctor,
+                                                vec![("Offset", format!("0x{:X}", layout.effective_offset))],
+                                            ));
+                                        }
+                                        let layout_attrs = crate::output::static_field_exporter::dummy_dll_layout_attrs(
+                                            &layout, config,
+                                        );
+                                        for (name, value) in layout_attrs {
+                                            if name == "ThreadStatic" {
+                                                continue;
+                                            }
+                                            let ctor = if name.starts_with("FieldRva") || name == "MetadataOffset" {
+                                                attr_ctors.field_rva_ctor
+                                            } else {
+                                                attr_ctors.metadata_offset_ctor
+                                            };
+                                            field.attributes.push(make_named_string_attr(
+                                                ctor,
+                                                vec![(name, value)],
+                                            ));
+                                        }
+                                    }
                                 }
                             }
 

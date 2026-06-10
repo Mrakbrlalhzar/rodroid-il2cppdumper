@@ -21,15 +21,33 @@
 
 ---
 
+## ✨ What's New in V6
+
+### Engine (same as CLI v6)
+- Thread-static + FieldRVA export (`static_metadata.json`, dump.cs annotations, DummyDll) — **off by default**, enable in Dump Options
+- Nested FieldRVA options when static metadata is on: hex data toggle + max bytes cap
+- iOS CODM auto-flag parity with Android
+- Unity 27+ FieldRva binary scan on PE / Mach-O / NSO / WASM
+- Memory-dumped CODM binary fixes (image-base / dump-file path alongside CODM decryption)
+
+### UI transformation (Material 3)
+The desktop/mobile GUI was rebuilt on **[noph-ui](https://www.npmjs.com/package/noph-ui)** — a Material 3 component kit for Svelte — to match the Android Jetpack Compose look and feel:
+
+- **Material 3 theming** — `data-theme` dark / light / system, dynamic surface containers, M3 typography and elevation
+- **Migrated screens** — Idle, Dumping (live log), Result, Error, Settings, About, Splash, Crash, Config dialog, input prompts
+- **Android-parity layout** — full-width Start Dump bar, tonal Dump Options button, labeled path cards with folder pickers
+- **Config dialog sections** — Output · Generation · Advanced Generics · C++ Headers · Disassembly · **Static Field Metadata** · Advanced
+- **Animations** — staggered card entrance, collapsible nested toggles (generics / disassembly / static metadata), dialog scrim fade
+- **Custom components** — `PathInput` (full-width monospace paths), `ConfigSwitch`, `AnimatedExpand`
+- **i18n** — 7 languages (EN, SQ, AR, ES, HI, ID, JV)
+
+> Skeleton UI was removed in favour of noph-ui M3 primitives (`Button`, `Switch`, `TextField`, `SegmentedButton`, `ChipSet`, etc.).
+
 ## ✨ What's New in V5
 
-- **Total UI overhaul** — redesigned card-based layout, refined typography, theme tokens, smooth transitions
-- **Live streaming logs** — real-time progress for binary loading, format detection, registration search, and output generation
-- **Per-step status** — CodeRegistration / MetadataRegistration addresses are now displayed in every search path (Mach-O `__mod_init_func`, helper section search, NSO, WASM)
-- **Full configuration panel** — every CLI flag exposed as a toggle, including all 7 new disassembly engine features
-- **CODM toggle** — one switch to enable Call of Duty Mobile's custom v23 metadata layout (Android ELF 32/64 + iOS Mach-O 32/64)
-- **Mobile-ready** — works on Android and iOS with native file pickers and platform-specific file copying
-- **Auto Unity version detection** — shows Unity build label as soon as you pick the binary
+- Live streaming logs with per-step registration addresses
+- Full disassembly engine exposed in the config panel
+- CODM toggle, mobile file pickers, auto Unity version chips
 
 ---
 
@@ -37,25 +55,26 @@
 
 ```
 ┌─────────────────────────────────────┐
-│  🛡️  Rodroid Il2CppDumper           │
-│  ���────────────────────────────────  │
-│  📂 Binary    [libil2cpp.so]   ✓    │
-│       ELF64 · Unity 2022.3.62f2     │
-│  📦 Metadata  [global-metadata.dat]✓│
-│                                     │
-│  ⚙️  Dump Options                   │
-│                                     │
-│  ▶  Start Dump                      │
+│  Rodroid IL2CPP Dumper    v6 Desktop│
+│  ─────────────────────────────────  │
+│  IL2CPP BINARY    [path]      [📁]  │
+│  METADATA         [path]      [📁]  │
+│  [ Dump Options ]                   │
+│  ┌───────────────────────────────┐  │
+│  │  ▶  Start Dump                │  │
+│  └───────────────────────────────┘  │
 └─────────────────────────────────────┘
 ```
 
-The configuration dialog exposes:
+**Dump Options** dialog sections:
 
-- **Output**: methods, fields, properties, attributes, offsets, typedef indices, assembly names, split-per-type
-- **Generation**: structs, DummyDLLs, tokens, generics dump
-- **C++ Headers**: scaffold, name mangling, IDA metadata, Unity headers, topological sort, GCC/MSVC layout
-- **Disassembly**: target (dump.cs / DiffableCS / both), hex bytes, field names, annotations, CFG, max instructions
-- **Advanced**: force IL2CPP version, force dump, no-redirected-pointer, **CODM**
+- **Output** — methods, fields, properties, attributes, offsets, typedef indices, assembly names, split-per-type
+- **Generation** — structs, DummyDLLs, tokens
+- **Advanced Generics** — master toggle + 7 sub-options (RGCTX, MethodSpecs, …)
+- **C++ Headers** — scaffold, mangling, IDA metadata, Unity headers, topological sort, GCC/MSVC
+- **Disassembly** — target (dump.cs / DiffableCs / both), hex bytes, field names, annotations, CFG, max instructions
+- **Static Field Metadata** — thread-static / FieldRVA export + nested FieldRVA hex + max bytes
+- **Advanced** — force IL2CPP version, force dump, no-redirected-pointer, CODM
 
 ---
 
@@ -141,7 +160,7 @@ pnpm tauri ios dev          # or: pnpm tauri ios build
 1. Launch the app
 2. **Pick a binary** — `libil2cpp.so`, `GameAssembly.dll`, `UnityFramework`, `.nso`, or `.wasm`
 3. **Pick a metadata file** — usually `global-metadata.dat`
-4. *(Optional)* Open **Dump Options** and tweak generation, disassembly, or enable **CODM**
+4. *(Optional)* Open **Dump Options** — enable **Static Field Metadata**, disassembly, CODM, etc.
 5. Hit **Start Dump** — watch the live log and find the output in an auto-numbered `Dump0/`, `Dump1/`, … folder
 
 ---
@@ -150,23 +169,20 @@ pnpm tauri ios dev          # or: pnpm tauri ios build
 
 ```
 rodroid-il2cppdumper/
-├── src/                              # SvelteKit frontend
+├── src/                              # SvelteKit + noph-ui (Material 3)
 │   ├── lib/
-│   │   ├── components/
-│   │   │   ├── IdleScreen.svelte     # binary/metadata picker
-│   │   │   ├── ConfigDialog.svelte   # full options panel
-│   │   │   ├── DumpingScreen.svelte  # live log + progress
-│   │   │   └── DoneScreen.svelte     # output summary
-│   │   ├── stores.ts                 # app state, config, i18n
-│   │   └── types.ts                  # DumperConfig, BinaryInfo
-��   └── routes/+page.svelte           # screen router
-├── src-tauri/                        # Rust backend
-│   ├── src/
-│   │   ├── lib.rs                    # Tauri commands: detect_binary, run_dump
-│   │   └── main.rs
-│   ├── tauri.conf.json
-│   └── Cargo.toml                    # depends on ../il2cpp_dumper
-└── package.json
+│   │   ├── components/               # IdleScreen, ConfigDialog, DumpingScreen, …
+│   │   ├── dumpRunner.ts             # single-shot dump start + log cap
+│   │   ├── dumpEvents.ts             # Tauri event listeners
+│   │   ├── stores.ts                 # config, i18n, theme
+│   │   └── types.ts                  # DumperConfig (incl. v6 static keys)
+│   ├── app.css                       # M3 tokens, dialog, animations
+│   └── routes/+page.svelte           # screen router + config dialog host
+├── src-tauri/
+│   ├── src/lib.rs                    # Tauri commands + v6 dump pipeline
+│   ├── config.json                   # default Rust config reference
+│   └── Cargo.toml
+└── package.json                      # noph-ui dependency
 ```
 
 The backend wraps the [`il2cpp_dumper`](../il2cpp_dumper) Rust crate as a library and streams progress events back to the frontend via Tauri's event system.
@@ -185,6 +201,7 @@ MIT
 - [SamboyCoding/Cpp2IL](https://github.com/SamboyCoding/Cpp2IL) — Advanced IL2CPP analysis tool
 - [tauri-apps](https://tauri.app/) — Cross-platform native shell
 - [SvelteKit](https://kit.svelte.dev/) — Frontend framework
+- [noph-ui](https://www.npmjs.com/package/noph-ui) — Material 3 components for Svelte
 - [console-rs](https://github.com/console-rs) — Terminal styling ecosystem reused for the CLI
 
 ---

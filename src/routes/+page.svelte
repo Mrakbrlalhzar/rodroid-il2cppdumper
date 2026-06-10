@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { listen } from "@tauri-apps/api/event";
-  import { invoke } from "@tauri-apps/api/core";
   import { downloadDir, documentDir, join } from "@tauri-apps/api/path";
   import { type } from "@tauri-apps/plugin-os";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
+  import { IconButton } from "noph-ui";
+  import { Icon } from "noph-ui/icons";
+  import { get } from "svelte/store";
   import {
-    appState, currentScreen, config, logs, binaryPath, metadataPath,
-    binaryInfo, outputPath, errorMessage, inputRequest, elapsedSeconds,
-    themeMode, applyTheme, t, crashLog, resetAll, outputDir, defaultOutputDir
+    config, configDialogOpen, currentScreen, themeMode, applyTheme, t, crashLog, resetAll,
+    outputDir, defaultOutputDir,
   } from "$lib/stores";
-  import type { DumperConfig, DumpCompleteEvent, InputRequestEvent } from "$lib/types";
+  import { DEFAULT_CONFIG, type DumperConfig } from "$lib/types";
+  import ConfigDialog from "$lib/components/ConfigDialog.svelte";
   import IdleScreen from "$lib/components/IdleScreen.svelte";
   import DumpingScreen from "$lib/components/DumpingScreen.svelte";
   import ResultScreen from "$lib/components/ResultScreen.svelte";
@@ -20,12 +20,21 @@
   import SplashScreen from "$lib/components/SplashScreen.svelte";
   import CrashScreen from "$lib/components/CrashScreen.svelte";
   import InputDialog from "$lib/components/InputDialog.svelte";
+  import { setupDumpEvents } from "$lib/dumpEvents";
 
-  let unlistenLog: (() => void) | null = null;
-  let unlistenComplete: (() => void) | null = null;
-  let unlistenInput: (() => void) | null = null;
-  let unlistenCrash: (() => void) | null = null;
   let currentOs = $state("Desktop");
+  let draftConfig = $state<DumperConfig>({ ...DEFAULT_CONFIG });
+
+  $effect(() => {
+    if ($configDialogOpen) {
+      draftConfig = { ...DEFAULT_CONFIG, ...get(config) };
+    }
+  });
+
+  function closeConfigDialog() {
+    config.set({ ...DEFAULT_CONFIG, ...draftConfig });
+    configDialogOpen.set(false);
+  }
 
   onMount(async () => {
     try {
@@ -59,74 +68,8 @@
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener("change", () => { if ($themeMode === "system") applyTheme("system"); });
 
-    unlistenLog = await listen<{ message: string }>("dump-log", (event) => {
-      logs.update(l => [...l, event.payload.message]);
-    });
-
-    unlistenComplete = await listen<DumpCompleteEvent>("dump-complete", (event) => {
-      if (event.payload.success) {
-        outputPath.set(event.payload.output_path);
-        appState.set("result");
-        currentScreen.set("result");
-      } else {
-        errorMessage.set(event.payload.error_message);
-        appState.set("error");
-        currentScreen.set("error");
-      }
-    });
-
-    unlistenInput = await listen<InputRequestEvent>("dump-input-request", (event) => {
-      inputRequest.set(event.payload.prompt_type);
-    });
-
-    unlistenCrash = await listen<{ crash_log: string }>("dump-crash", (event) => {
-      crashLog.set(event.payload.crash_log);
-      currentScreen.set("crash");
-    });
+    await setupDumpEvents();
   });
-
-  onDestroy(() => {
-    unlistenLog?.();
-    unlistenComplete?.();
-    unlistenInput?.();
-    unlistenCrash?.();
-  });
-
-  let dumpStarted = false;
-
-  $effect(() => {
-    if ($currentScreen === "dumping" && !dumpStarted) {
-      handleStartDump();
-    }
-  });
-
-  async function handleStartDump() {
-    if (dumpStarted) return;
-    dumpStarted = true;
-
-    const bp = $binaryPath;
-    const mp = $metadataPath;
-    let cfg: DumperConfig = {} as DumperConfig;
-    config.subscribe(c => cfg = c)();
-
-    let outDir = "IL2CppDumper";
-    outputDir.subscribe(v => outDir = v)();
-
-    logs.set([]);
-    elapsedSeconds.set(0);
-
-    try {
-      await invoke("start_dump", {
-        binaryPath: bp, metadataPath: mp,
-        outputDir: outDir, configJson: JSON.stringify(cfg),
-      });
-    } catch (e) {
-      errorMessage.set(String(e));
-      appState.set("error");
-      currentScreen.set("error");
-    }
-    dumpStarted = false;
-  }
 
   function handleSplashFinished() {
     currentScreen.set("idle");
@@ -145,44 +88,44 @@
 {#if $currentScreen === "splash"}
   <SplashScreen onfinished={handleSplashFinished} />
 {:else if $currentScreen === "crash"}
-  <main class="h-[100dvh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]" style="background: var(--app-bg); color: var(--text-primary);">
+  <main class="h-[100dvh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] m3-app">
     <CrashScreen crashLog={$crashLog} onrestart={handleCrashRestart} />
   </main>
 {:else}
-  <main class="h-[100dvh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]" style="background: var(--app-bg); color: var(--text-primary);">
+  <main class="h-[100dvh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] m3-app">
     {#if $currentScreen !== "settings" && $currentScreen !== "about"}
-      <header class="shrink-0 px-5 py-3 border-b" style="border-color: var(--card-border);" data-tauri-drag-region>
+      <header class="m3-top-bar shrink-0 px-5 py-3" data-tauri-drag-region>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="size-9 rounded-xl flex items-center justify-center" style="background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring);">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--accent);"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <div class="m3-icon-tile size-9">
+              <Icon>code</Icon>
             </div>
             <div>
               <h1 class="text-sm font-semibold tracking-tight">{$t.app_name}</h1>
-              <p class="text-[10px]" style="color: var(--text-secondary);">v5.5 {currentOs}</p>
+              <p class="text-[10px] m3-secondary">v6.0 {currentOs}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
             {#if $currentScreen === "dumping"}
-              <span class="app-badge app-badge-accent text-xs gap-1.5">
-                <span class="size-1.5 rounded-full animate-pulse" style="background: var(--accent);"></span>
+              <span class="m3-badge m3-badge-primary">
+                <span class="size-1.5 rounded-full animate-pulse" style="background: var(--np-color-primary);"></span>
                 {$t.status_processing}
               </span>
             {:else if $currentScreen === "result"}
-              <span class="app-badge app-badge-success text-xs gap-1.5">
-                <span class="size-1.5 rounded-full" style="background: var(--success);"></span>
+              <span class="m3-badge m3-badge-tertiary">
+                <span class="size-1.5 rounded-full" style="background: var(--np-color-tertiary);"></span>
                 {$t.dump_complete}
               </span>
             {:else if $currentScreen === "error"}
-              <span class="app-badge app-badge-error text-xs gap-1.5">
-                <span class="size-1.5 rounded-full" style="background: var(--error);"></span>
+              <span class="m3-badge m3-badge-error">
+                <span class="size-1.5 rounded-full" style="background: var(--np-color-error);"></span>
                 {$t.dump_failed}
               </span>
             {/if}
             {#if $currentScreen === "idle"}
-              <button type="button" class="app-btn-icon" aria-label="Settings" onclick={() => currentScreen.set("settings")}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
+              <IconButton aria-label="Settings" onclick={() => currentScreen.set("settings")}>
+                <Icon>settings</Icon>
+              </IconButton>
             {/if}
           </div>
         </div>
@@ -207,4 +150,7 @@
   </main>
 
   <InputDialog />
+  {#if $configDialogOpen}
+    <ConfigDialog bind:config={draftConfig} onclose={closeConfigDialog} />
+  {/if}
 {/if}

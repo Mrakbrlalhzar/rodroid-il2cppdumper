@@ -55,6 +55,7 @@ pub struct Il2Cpp {
     pub exported_symbols: Vec<String>,
     pub api_export_rvas: HashMap<String, u64>,
     pub codm: bool,
+    pub type_definition_sizes: Vec<Il2CppTypeDefinitionSizes>,
 }
 
 impl Il2Cpp {
@@ -96,6 +97,7 @@ impl Il2Cpp {
             exported_symbols: Vec::new(),
             api_export_rvas: HashMap::new(),
             codm: false,
+            type_definition_sizes: Vec::new(),
         }
     }
 
@@ -153,6 +155,7 @@ impl Il2Cpp {
             exported_symbols: Vec::new(),
             api_export_rvas: HashMap::new(),
             codm: elf.codm_diag,
+            type_definition_sizes: elf.type_definition_sizes.clone(),
         }
     }
 
@@ -182,17 +185,51 @@ impl Il2Cpp {
 
         self.types.clear();
         self.type_dic.clear();
+        let tolerant = self.codm && self.is_dumped;
+        let mut decoded = 0usize;
+        let mut skipped = 0usize;
         for (idx, ptr) in type_ptrs.iter().enumerate() {
-            let t_offset = map_vatr(*ptr).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("type[{}] ptr=0x{:x}: {}", idx, ptr, e)))?;
-            self.stream.set_position(t_offset);
-            let mut t = Il2CppType::read(&mut self.stream)?;
-            if self.codm {
+            if tolerant {
+                let t_offset = match map_vatr(*ptr) {
+                    Ok(o) => o,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                self.stream.set_position(t_offset);
+                let mut t = match Il2CppType::read(&mut self.stream) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                let pre = t.type_enum;
                 t.init_codm(self.version);
+                if pre != t.type_enum {
+                    decoded += 1;
+                }
+                self.types.push(t);
+                self.type_dic.insert(*ptr, idx);
             } else {
-                t.init(self.version);
+                let t_offset = map_vatr(*ptr).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("type[{}] ptr=0x{:x}: {}", idx, ptr, e)))?;
+                self.stream.set_position(t_offset);
+                let mut t = Il2CppType::read(&mut self.stream)?;
+                if self.codm {
+                    t.init_codm(self.version);
+                } else {
+                    t.init(self.version);
+                }
+                self.types.push(t);
+                self.type_dic.insert(*ptr, idx);
             }
-            self.types.push(t);
-            self.type_dic.insert(*ptr, idx);
+        }
+        if tolerant {
+            eprintln!("[CODM] init_codm decoded {} of {} Il2CppType entries (skipped {})",
+                decoded, type_ptrs.len(), skipped);
         }
 
 
@@ -281,6 +318,16 @@ impl Il2Cpp {
                     raw.push(self.stream.read_i32()?);
                 }
                 self.field_offsets = vec![raw];
+            }
+        }
+
+        if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
+            let sizes_offset = map_vatr(mr.type_definitions_sizes)?;
+            self.stream.set_position(sizes_offset);
+            self.type_definition_sizes.clear();
+            self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+            for _ in 0..mr.type_definitions_sizes_count {
+                self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
             }
         }
 
@@ -374,15 +421,13 @@ impl Il2Cpp {
         }
     }
 
-    pub fn get_field_offset_from_index(
+    pub fn get_raw_field_offset(
         &mut self,
         type_def_index: usize,
         field_index_in_type: usize,
         field_index: usize,
-        is_value_type: bool,
-        is_static: bool,
     ) -> i32 {
-        let offset = if self.field_offsets_are_pointers {
+        if self.field_offsets_are_pointers {
             if type_def_index >= self.field_offset_pointers.len() {
                 return -1;
             }
@@ -398,18 +443,34 @@ impl Il2Cpp {
             self.stream.set_position(read_pos);
             match self.stream.read_i32() {
                 Ok(v) => v,
-                Err(_) => return -1,
+                Err(_) => -1,
             }
         } else if !self.field_offsets.is_empty() {
             let flat = &self.field_offsets[0];
             if field_index < flat.len() {
                 flat[field_index]
             } else {
-                return -1;
+                -1
             }
         } else {
-            return -1;
-        };
+            -1
+        }
+    }
+
+    pub fn get_field_offset_from_index(
+        &mut self,
+        type_def_index: usize,
+        field_index_in_type: usize,
+        field_index: usize,
+        is_value_type: bool,
+        is_static: bool,
+    ) -> i32 {
+        let raw = self.get_raw_field_offset(type_def_index, field_index_in_type, field_index);
+        let decoded = super::field_layout::decode_field_offset(raw);
+        if raw < 0 && !decoded.is_thread_static {
+            return raw;
+        }
+        let offset = decoded.effective;
 
         if offset > 0 && is_value_type && !is_static {
             let header = if self.is_32bit { 8 } else { 16 };

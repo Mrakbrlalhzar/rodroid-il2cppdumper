@@ -268,8 +268,31 @@ impl Pe {
         }
     }
 
-    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
+    /// Writable/readable data sections used for v27+ metadata-usage scans (FieldRva, etc.).
+    pub fn data_search_sections(&self) -> Vec<SearchSection> {
         let mut data_list = Vec::new();
+        for section in &self.sections {
+            if section.virtual_size == 0 {
+                continue;
+            }
+            let search_section = SearchSection::new(
+                section.pointer_to_raw_data as u64,
+                (section.pointer_to_raw_data + section.size_of_raw_data) as u64,
+                section.virtual_address as u64 + self.image_base,
+                (section.virtual_address + section.virtual_size) as u64 + self.image_base,
+            );
+            let chars = section.characteristics;
+            let is_code = (chars & IMAGE_SCN_CNT_CODE) != 0 || (chars & IMAGE_SCN_MEM_EXECUTE) != 0;
+            let is_data = (chars & IMAGE_SCN_CNT_INITIALIZED_DATA) != 0;
+            if is_data && !is_code {
+                data_list.push(search_section);
+            }
+        }
+        data_list
+    }
+
+    pub fn get_section_helper(&self, method_count: usize, type_definitions_count: usize, metadata_usages_count: usize, image_count: usize, version: f64) -> SectionHelper<'_> {
+        let data_list = self.data_search_sections();
         let mut exec_list = Vec::new();
         let mut all_sections = Vec::new();
 
@@ -296,7 +319,6 @@ impl Pe {
                 exec_list.push(search_section);
             } else if is_data && !is_code {
 
-                data_list.push(search_section);
             } else {
 
             }

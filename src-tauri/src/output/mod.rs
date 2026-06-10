@@ -2,6 +2,7 @@ pub mod script_json;
 pub mod decompiler;
 pub mod struct_generator;
 pub mod dummy_assembly_generator;
+pub mod static_field_exporter;
 pub mod header_constants;
 pub mod embedded_scripts;
 pub mod generics;

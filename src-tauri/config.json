@@ -9,8 +9,8 @@
   "dumpAssemblyName": true,
   "generateStruct": true,
   "generateDummyDll": true,
-  "dummyDllAddToken": true,
   "requireAnyKey": true,
+  "dummyDllAddToken": true,
   "forceIl2cppVersion": false,
   "forceVersion": 31.0,
   "forceDump": false,
@@ -37,5 +37,8 @@
   "generateUnityHeaders": true,
   "compilerLayout": "GCC",
   "useTopologicalSort": true,
-  "codm" : false
+  "codm": false,
+  "dumpStaticFieldMetadata": false,
+  "dumpFieldRvaData": false,
+  "maxFieldRvaDumpBytes": 4096
 }

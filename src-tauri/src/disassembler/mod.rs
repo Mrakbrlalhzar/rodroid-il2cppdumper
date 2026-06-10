@@ -4,6 +4,8 @@ mod x86;
 use std::collections::{HashMap, HashSet, BTreeMap};
 use std::fmt;
 
+const RIP_PSEUDO_REG: u16 = u16::MAX;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Architecture {
     Arm32,
@@ -1283,7 +1285,9 @@ fn compute_propagation(
 
         if let Some(ref li) = insn.load_info {
             reg_load_offset.insert(li.dest_reg, li.offset);
-            if let Some(&base_va) = reg_state.get(&li.base_reg) {
+            if li.base_reg == RIP_PSEUDO_REG {
+                reg_load_va.insert(li.dest_reg, li.offset as u64);
+            } else if let Some(&base_va) = reg_state.get(&li.base_reg) {
                 let load_va = (base_va as i64).wrapping_add(li.offset) as u64;
                 reg_load_va.insert(li.dest_reg, load_va);
             } else {
@@ -1431,10 +1435,18 @@ fn detect_switch_dispatches(
     instructions: &[DisassembledInstruction],
     arch: Architecture,
 ) -> HashMap<u64, SwitchAnnotation> {
-    let mut out: HashMap<u64, SwitchAnnotation> = HashMap::new();
-    if !matches!(arch, Architecture::Arm64) {
-        return out;
+    match arch {
+        Architecture::Arm64 => detect_switch_arm64(instructions),
+        Architecture::X86 | Architecture::X64 => detect_switch_x86(instructions),
+        _ => HashMap::new(),
     }
+}
+
+fn detect_switch_arm64(
+    instructions: &[DisassembledInstruction],
+) -> HashMap<u64, SwitchAnnotation> {
+    let mut out: HashMap<u64, SwitchAnnotation> = HashMap::new();
+    if instructions.is_empty() { return out; }
 
     let branch_targets: HashSet<u64> = instructions.iter()
         .filter_map(|i| i.branch_target)
@@ -1569,15 +1581,136 @@ fn detect_switch_dispatches(
     out
 }
 
+fn detect_switch_x86(
+    instructions: &[DisassembledInstruction],
+) -> HashMap<u64, SwitchAnnotation> {
+    let mut out: HashMap<u64, SwitchAnnotation> = HashMap::new();
+    if instructions.is_empty() { return out; }
+
+    let branch_targets: HashSet<u64> = instructions.iter()
+        .filter_map(|i| i.branch_target)
+        .chain(instructions.iter().filter_map(|i| i.call_target))
+        .collect();
+    let internal_targets: HashSet<u64> = {
+        let addrs: HashSet<u64> = instructions.iter().map(|i| i.address).collect();
+        branch_targets.iter().filter(|a| addrs.contains(a)).copied().collect()
+    };
+
+    let mut state: HashMap<u16, SwOrigin> = HashMap::new();
+
+    for insn in instructions {
+        if internal_targets.contains(&insn.address) {
+            state.clear();
+        }
+
+        let has_reg_reg = insn.reg_reg_access.is_some();
+        let is_load_mnem = matches!(insn.mnemonic.as_str(),
+            "MOV" | "MOVZX" | "MOVSX" | "MOVSXD");
+
+        if let Some(ref op) = insn.constant_op {
+            match *op {
+                ConstantOp::Adrp { dest_reg, page } => {
+                    state.insert(dest_reg, SwOrigin::TableBase(page));
+                    out.insert(insn.address, SwitchAnnotation::TableBase { table_va: page });
+                }
+                ConstantOp::MovImm { dest_reg, value } if value > 0x1000 => {
+                    state.insert(dest_reg, SwOrigin::TableBase(value));
+                }
+                ConstantOp::MovReg { dest_reg, src_reg } => {
+                    if let Some(&origin) = state.get(&src_reg) {
+                        state.insert(dest_reg, origin);
+                    } else {
+                        state.remove(&dest_reg);
+                    }
+                }
+                ConstantOp::AddSubImm { dest_reg, src_reg, imm: 0 } => {
+                    let dest_origin = state.get(&dest_reg).copied();
+                    let src_origin = state.get(&src_reg).copied();
+                    let combined = x86_switch_combine(dest_origin, src_origin)
+                        .or_else(|| x86_switch_combine(src_origin, dest_origin));
+                    if let Some((table_va, index_reg)) = combined {
+                        state.insert(dest_reg, SwOrigin::Target { table_va, index_reg });
+                        out.insert(insn.address, SwitchAnnotation::TargetCompute { table_va });
+                    } else {
+                        state.remove(&dest_reg);
+                    }
+                }
+                ConstantOp::Kill { dest_reg } if has_reg_reg && is_load_mnem => {
+                    if let Some(ref rra) = insn.reg_reg_access {
+                        if let Some(&SwOrigin::TableBase(table_va)) = state.get(&rra.base_reg) {
+                            state.insert(dest_reg, SwOrigin::LoadedOffset {
+                                table_va,
+                                index_reg: rra.index_reg,
+                            });
+                            out.insert(insn.address, SwitchAnnotation::OffsetLoad {
+                                table_va,
+                                index_reg: rra.index_reg,
+                                shift: rra.shift,
+                            });
+                        } else {
+                            state.remove(&dest_reg);
+                        }
+                    }
+                }
+                ConstantOp::Kill { dest_reg }
+                | ConstantOp::MovImm { dest_reg, .. }
+                | ConstantOp::MovKeep { dest_reg, .. }
+                | ConstantOp::AddSubImm { dest_reg, .. } => {
+                    state.remove(&dest_reg);
+                }
+                ConstantOp::KillPair { dest_reg1, dest_reg2 } => {
+                    state.remove(&dest_reg1);
+                    state.remove(&dest_reg2);
+                }
+            }
+        }
+
+        if insn.is_unconditional_branch && !insn.is_call {
+            if let Some(target_reg) = insn.indirect_call_reg {
+                match state.get(&target_reg).copied() {
+                    Some(SwOrigin::Target { table_va, index_reg })
+                    | Some(SwOrigin::LoadedOffset { table_va, index_reg }) => {
+                        out.insert(insn.address, SwitchAnnotation::Dispatch { table_va, index_reg });
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(ref rra) = insn.reg_reg_access {
+                let table_va = state.get(&rra.base_reg)
+                    .and_then(|o| if let SwOrigin::TableBase(va) = *o { Some(va) } else { None })
+                    .or_else(|| insn.memory_offset.map(|d| d as u64));
+                if let Some(tva) = table_va {
+                    out.insert(insn.address, SwitchAnnotation::Dispatch {
+                        table_va: tva,
+                        index_reg: rra.index_reg,
+                    });
+                }
+            }
+            state.clear();
+        }
+
+        if insn.is_call {
+            state.clear();
+        }
+    }
+
+    out
+}
+
+fn x86_switch_combine(a: Option<SwOrigin>, b: Option<SwOrigin>) -> Option<(u64, u16)> {
+    match (a, b) {
+        (Some(SwOrigin::TableBase(va)), Some(SwOrigin::LoadedOffset { table_va, index_reg }))
+            if va == table_va => Some((va, index_reg)),
+        _ => None,
+    }
+}
+
 fn detect_static_field_accesses(
     instructions: &[DisassembledInstruction],
-    arch: Architecture,
+    _arch: Architecture,
     global_annotations: &HashMap<u64, MetadataAnnotation>,
 ) -> HashMap<u64, (u64, i64)> {
     let mut out: HashMap<u64, (u64, i64)> = HashMap::new();
-    if !matches!(arch, Architecture::Arm64) {
-        return out;
-    }
 
     let branch_targets: HashSet<u64> = instructions.iter()
         .filter_map(|i| i.branch_target)
@@ -1606,7 +1739,9 @@ fn detect_static_field_accesses(
         }
 
         if let Some(ref li) = insn.load_info {
-            if let Some(&base_va) = reg_state.get(&li.base_reg) {
+            if li.base_reg == RIP_PSEUDO_REG {
+                reg_load_va.insert(li.dest_reg, li.offset as u64);
+            } else if let Some(&base_va) = reg_state.get(&li.base_reg) {
                 let load_va = (base_va as i64).wrapping_add(li.offset) as u64;
                 reg_load_va.insert(li.dest_reg, load_va);
             } else {
@@ -1736,10 +1871,18 @@ fn detect_init_check_ranges(
     arch: Architecture,
     rva_to_name: &HashMap<u64, String>,
 ) -> InitCheckRanges {
-    let mut out = InitCheckRanges::default();
-    if !matches!(arch, Architecture::Arm64) {
-        return out;
+    match arch {
+        Architecture::Arm64 => detect_init_check_arm64(instructions, rva_to_name),
+        Architecture::X86 | Architecture::X64 => detect_init_check_x86(instructions, rva_to_name),
+        _ => InitCheckRanges::default(),
     }
+}
+
+fn detect_init_check_arm64(
+    instructions: &[DisassembledInstruction],
+    rva_to_name: &HashMap<u64, String>,
+) -> InitCheckRanges {
+    let mut out = InitCheckRanges::default();
     if instructions.len() < 4 {
         return out;
     }
@@ -1826,6 +1969,93 @@ fn detect_init_check_ranges(
             out.suppressed.insert(instructions[k].address);
         }
 
+        i = end_idx;
+    }
+
+    out
+}
+
+fn detect_init_check_x86(
+    instructions: &[DisassembledInstruction],
+    rva_to_name: &HashMap<u64, String>,
+) -> InitCheckRanges {
+    let mut out = InitCheckRanges::default();
+    if instructions.len() < 4 { return out; }
+
+    let scan_limit = instructions.len().min(24);
+    let mut i = 0;
+
+    while i < scan_limit {
+        let insn = &instructions[i];
+
+        let is_mem_load = insn.load_info.is_some()
+            && matches!(insn.mnemonic.as_str(), "MOV" | "MOVZX" | "MOVSX" | "MOVSXD");
+        let is_cmp_test_mem = matches!(insn.mnemonic.as_str(), "CMP" | "TEST")
+            && insn.memory_offset.is_some();
+
+        if !is_mem_load && !is_cmp_test_mem {
+            i += 1;
+            continue;
+        }
+
+        let start_idx = i;
+        let test_start = if is_cmp_test_mem {
+            i
+        } else {
+            let mut found = None;
+            for j in (i + 1)..(i + 4).min(instructions.len()) {
+                if matches!(instructions[j].mnemonic.as_str(), "CMP" | "TEST") {
+                    found = Some(j);
+                    break;
+                }
+                if instructions[j].is_branch || instructions[j].is_return { break; }
+            }
+            match found { Some(f) => f, None => { i += 1; continue; } }
+        };
+
+        let mut jcc_idx: Option<usize> = None;
+        for j in test_start..(test_start + 3).min(instructions.len()) {
+            let m = instructions[j].mnemonic.as_str();
+            if matches!(m, "JNE" | "JE" | "JNZ" | "JZ" | "JNS" | "JS") {
+                if let Some(target) = instructions[j].branch_target {
+                    if target > instructions[j].address
+                        && target.saturating_sub(instructions[j].address) <= 0x80
+                    {
+                        jcc_idx = Some(j);
+                        break;
+                    }
+                }
+            }
+            if instructions[j].is_unconditional_branch || instructions[j].is_return { break; }
+        }
+
+        let jcc_idx = match jcc_idx { Some(j) => j, None => { i += 1; continue; } };
+        let target = instructions[jcc_idx].branch_target.unwrap();
+
+        let mut end_idx: Option<usize> = None;
+        let mut has_runtime_call = false;
+        for j in (jcc_idx + 1)..instructions.len().min(jcc_idx + 20) {
+            let cand = &instructions[j];
+            if cand.address >= target { end_idx = Some(j); break; }
+            if cand.is_call {
+                if let Some(t) = cand.call_target {
+                    if !rva_to_name.contains_key(&t) { has_runtime_call = true; }
+                } else {
+                    has_runtime_call = true;
+                }
+            }
+            if cand.is_return { break; }
+        }
+
+        let end_idx = match end_idx {
+            Some(e) if has_runtime_call => e,
+            _ => { i += 1; continue; }
+        };
+
+        out.range_starts.insert(instructions[start_idx].address);
+        for k in (start_idx + 1)..end_idx {
+            out.suppressed.insert(instructions[k].address);
+        }
         i = end_idx;
     }
 

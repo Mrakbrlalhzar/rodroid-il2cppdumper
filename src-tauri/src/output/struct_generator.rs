@@ -75,10 +75,11 @@ impl StructGenerator {
         il2cpp: &mut Il2Cpp,
         config: &crate::config::Config,
         output_dir: &str,
+        static_catalog: Option<&crate::output::static_field_exporter::StaticFieldCatalog>,
     ) -> Result<()> {
         let output_path = Path::new(output_dir);
 
-        let script_json = Self::build_script_json(executor, metadata, il2cpp, config)?;
+        let script_json = Self::build_script_json(executor, metadata, il2cpp, config, static_catalog)?;
         let string_literal_json = Self::build_string_literal_json(metadata)?;
         let header = Self::build_header(executor, metadata, il2cpp, config)?;
         let mut functions_header = String::new();
@@ -152,6 +153,7 @@ impl StructGenerator {
         metadata: &mut Metadata,
         il2cpp: &mut Il2Cpp,
         config: &crate::config::Config,
+        static_catalog: Option<&crate::output::static_field_exporter::StaticFieldCatalog>,
     ) -> Result<String> {
         let mut script = ScriptJson::new();
         let mut addresses_set: HashSet<u64> = HashSet::new();
@@ -262,6 +264,10 @@ impl StructGenerator {
             Self::scan_v27_metadata_usages(&mut script, executor, metadata, il2cpp, &struct_name_dic, &type_def_image_names, config);
         } else if il2cpp.version > 16.0 {
             Self::add_metadata_usages(&mut script, executor, metadata, il2cpp, &struct_name_dic, &type_def_image_names, config);
+        }
+
+        if let Some(catalog) = static_catalog {
+            catalog.enrich_script_json(&mut script, il2cpp);
         }
 
         let mut sorted_addresses: Vec<u64> = addresses_set.into_iter().filter(|a| *a > 0).collect();
@@ -883,7 +889,7 @@ impl StructGenerator {
                 if metadata_value >= u32::MAX as u64 { continue; }
                 let encoded_token = metadata_value as u32;
                 let usage = (encoded_token & 0xE0000000) >> 29;
-                if usage == 0 || usage > 6 { continue; }
+                if usage == 0 || usage > 7 { continue; }
                 let decoded_index = (encoded_token & 0x1FFFFFFE) >> 1;
                 let expected = ((usage << 29) | (decoded_index << 1)) + 1;
                 if metadata_value != expected as u64 { continue; }
@@ -1012,6 +1018,49 @@ impl StructGenerator {
                                 name: format!("Method${}.{}()", spec_type_name, spec_method_name),
                                 method_address,
                             });
+                        }
+                    }
+                    7 => {
+                        if (decoded_index as usize) < metadata.field_refs.len() {
+                            let field_ref = metadata.field_refs[decoded_index as usize].clone();
+                            if (field_ref.type_index as usize) >= il2cpp.types.len() { continue; }
+                            let il2cpp_type = il2cpp.types[field_ref.type_index as usize].clone();
+                            let type_name = executor.get_type_name(&il2cpp_type, metadata, il2cpp, true, false);
+                            let klass_idx = il2cpp_type.klass_index() as usize;
+                            if let Some(td) = metadata.type_defs.get(klass_idx) {
+                                let field_idx = td.field_start as usize + field_ref.field_index as usize;
+                                if let Some(fd) = metadata.field_defs.get(field_idx) {
+                                    let field_name = metadata.get_string_from_index(fd.name_index).unwrap_or_default();
+                                    let field_path = format!("{}.{}", type_name, field_name);
+                                    script.script_metadata.push(ScriptMetadata {
+                                        address: rva,
+                                        name: format!("FieldRva${}", field_path),
+                                        signature: None,
+                                    });
+                                    let mut value = field_path.clone();
+                                    if config.dump_field_rva_data {
+                                        if let Some(fdv) = metadata.get_field_default_value(field_idx as i32) {
+                                            if fdv.data_index >= 0 {
+                                                let meta_off = metadata.get_default_value_offset(fdv.data_index);
+                                                if let Some(bytes) = crate::il2cpp::field_layout::read_metadata_bytes(
+                                                    metadata, meta_off, config.max_field_rva_dump_bytes.min(256),
+                                                ) {
+                                                    value = format!(
+                                                        "{} hex={}",
+                                                        field_path,
+                                                        crate::output::static_field_exporter::bytes_to_hex_preview(&bytes, 128),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    script.field_rvas.push(ScriptFieldInfo {
+                                        address: rva,
+                                        name: format!("{}_FieldRva", field_path.replace('.', "_")),
+                                        value,
+                                    });
+                                }
+                            }
                         }
                     }
                     _ => {}

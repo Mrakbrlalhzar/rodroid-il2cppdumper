@@ -146,6 +146,7 @@ pub struct Elf {
     pub metadata_usages: Vec<u64>,
     pub field_offsets: Vec<u64>,
     pub field_offsets_are_pointers: bool,
+    pub type_definition_sizes: Vec<Il2CppTypeDefinitionSizes>,
     pub generic_inst_pointers: Vec<u64>,
     pub generic_insts: Vec<Il2CppGenericInst>,
     pub generic_method_table: Vec<Il2CppGenericMethodFunctionsDefinitions>,
@@ -183,6 +184,7 @@ impl Elf {
             metadata_usages: Vec::new(),
             field_offsets: Vec::new(),
             field_offsets_are_pointers: false,
+            type_definition_sizes: Vec::new(),
             generic_inst_pointers: Vec::new(),
             generic_insts: Vec::new(),
             generic_method_table: Vec::new(),
@@ -230,6 +232,7 @@ impl Elf {
             metadata_usages: Vec::new(),
             field_offsets: Vec::new(),
             field_offsets_are_pointers: false,
+            type_definition_sizes: Vec::new(),
             generic_inst_pointers: Vec::new(),
             generic_insts: Vec::new(),
             generic_method_table: Vec::new(),
@@ -744,6 +747,8 @@ impl Elf {
         for dyn_entry in &mut self.dynamic {
             if fix_tags.contains(&dyn_entry.d_tag) {
                 dyn_entry.d_un += self.stream.image_base;
+            } else if self.codm_diag && dyn_entry.d_tag == DT_GNU_HASH {
+                dyn_entry.d_un += self.stream.image_base;
             }
         }
     }
@@ -1070,24 +1075,53 @@ impl Elf {
         self.type_dic.clear();
 
         let mut decoded = 0usize;
+        let mut skipped = 0usize;
         for (idx, ptr) in type_pointers.iter().enumerate() {
-            let offset = self.map_vatr(*ptr)?;
-            self.stream.set_position(offset);
-            let mut il2cpp_type = Il2CppType::read(&mut self.stream)?;
-            if self.codm_diag {
+            if self.codm_diag && self.is_dumped {
+                let offset = match self.map_vatr(*ptr) {
+                    Ok(o) => o,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                self.stream.set_position(offset);
+                let mut il2cpp_type = match Il2CppType::read(&mut self.stream) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
                 let pre = il2cpp_type.type_enum;
                 il2cpp_type.init_codm(version);
                 if pre != il2cpp_type.type_enum {
                     decoded += 1;
                 }
+                self.types.push(il2cpp_type);
+                self.type_dic.insert(*ptr, idx);
             } else {
-                il2cpp_type.init(version);
+                let offset = self.map_vatr(*ptr)?;
+                self.stream.set_position(offset);
+                let mut il2cpp_type = Il2CppType::read(&mut self.stream)?;
+                if self.codm_diag {
+                    let pre = il2cpp_type.type_enum;
+                    il2cpp_type.init_codm(version);
+                    if pre != il2cpp_type.type_enum {
+                        decoded += 1;
+                    }
+                } else {
+                    il2cpp_type.init(version);
+                }
+                self.types.push(il2cpp_type);
+                self.type_dic.insert(*ptr, idx);
             }
-            self.types.push(il2cpp_type);
-            self.type_dic.insert(*ptr, idx);
         }
         if self.codm_diag {
-            eprintln!("[CODM] init_codm decoded {} of {} Il2CppType entries", decoded, type_pointers.len());
+            eprintln!("[CODM] init_codm decoded {} of {} Il2CppType entries (skipped {})",
+                decoded, type_pointers.len(), skipped);
         }
 
         self.field_offsets_are_pointers = version > 21.0;
@@ -1098,6 +1132,16 @@ impl Elf {
         }
 
         self.field_offsets = self.map_vatr_array(mr.field_offsets, mr.field_offsets_count)?;
+
+        if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
+            let sizes_offset = self.map_vatr(mr.type_definitions_sizes)?;
+            self.stream.set_position(sizes_offset);
+            self.type_definition_sizes.clear();
+            self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+            for _ in 0..mr.type_definitions_sizes_count {
+                self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
+            }
+        }
 
         Ok(())
     }

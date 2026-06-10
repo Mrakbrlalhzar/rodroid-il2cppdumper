@@ -42,6 +42,9 @@ pub struct Config {
     pub compiler_layout: String,
     pub use_topological_sort: bool,
     pub codm: bool,
+    pub dump_static_field_metadata: bool,
+    pub dump_field_rva_data: bool,
+    pub max_field_rva_dump_bytes: usize,
 }
 
 impl Default for Config {
@@ -86,6 +89,9 @@ impl Default for Config {
             compiler_layout: "GCC".to_string(),
             use_topological_sort: true,
             codm: false,
+            dump_static_field_metadata: false,
+            dump_field_rva_data: false,
+            max_field_rva_dump_bytes: 4096,
         }
     }
 }
