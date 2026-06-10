@@ -294,6 +294,11 @@ pre {
 	color: var(--np-color-on-secondary-container);
 }
 
+.m3-start-dump--success {
+	background-color: var(--np-color-tertiary);
+	color: var(--np-color-on-tertiary);
+}
+
 .m3-error-detail {
 	padding: 0.625rem 1rem;
 	border-radius: 12px;

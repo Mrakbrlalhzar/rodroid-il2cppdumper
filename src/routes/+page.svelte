@@ -31,8 +31,12 @@
     }
   });
 
-  function closeConfigDialog() {
+  function confirmConfigDialog() {
     config.set({ ...DEFAULT_CONFIG, ...draftConfig });
+    configDialogOpen.set(false);
+  }
+
+  function cancelConfigDialog() {
     configDialogOpen.set(false);
   }
 
@@ -151,6 +155,6 @@
 
   <InputDialog />
   {#if $configDialogOpen}
-    <ConfigDialog bind:config={draftConfig} onclose={closeConfigDialog} />
+    <ConfigDialog bind:config={draftConfig} onconfirm={confirmConfigDialog} oncancel={cancelConfigDialog} />
   {/if}
 {/if}

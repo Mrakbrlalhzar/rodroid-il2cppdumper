@@ -6,11 +6,19 @@
   import ConfigSwitch from "./ConfigSwitch.svelte";
   import AnimatedExpand from "./AnimatedExpand.svelte";
 
-  let { config = $bindable(), onclose }: { config: DumperConfig; onclose: () => void } = $props();
+  let {
+    config = $bindable(),
+    onconfirm,
+    oncancel,
+  }: {
+    config: DumperConfig;
+    onconfirm: () => void;
+    oncancel: () => void;
+  } = $props();
 </script>
 
 <div class="m3-dialog-scrim m3-scrim-enter" role="presentation">
-  <button type="button" class="absolute inset-0 cursor-default" aria-label="Close dialog" onclick={onclose}></button>
+  <button type="button" class="absolute inset-0 cursor-default" aria-label="Close dialog" onclick={oncancel}></button>
   <div class="m3-dialog m3-dialog-enter" role="dialog" aria-labelledby="config-dialog-title">
     <div class="p-6 pb-4 shrink-0">
       <div class="flex items-center gap-3">
@@ -21,7 +29,7 @@
           <h3 id="config-dialog-title" class="text-lg font-semibold">{$t.dump_options}</h3>
           <p class="text-xs m3-secondary">Configure what gets included in the dump output.</p>
         </div>
-        <IconButton aria-label="Close" onclick={onclose}>
+        <IconButton aria-label="Close" onclick={oncancel}>
           <Icon>close</Icon>
         </IconButton>
       </div>
@@ -171,8 +179,8 @@
     </div>
 
     <div class="p-6 pt-4 shrink-0 border-t m3-dialog-actions" style="border-color: var(--np-color-outline-variant);">
-      <Button variant="text" onclick={onclose}>{$t.dialog_cancel}</Button>
-      <Button variant="filled" onclick={onclose}>{$t.dialog_ok}</Button>
+      <Button variant="text" onclick={oncancel}>{$t.dialog_cancel}</Button>
+      <Button variant="filled" onclick={onconfirm}>{$t.dialog_ok}</Button>
     </div>
   </div>
 </div>
