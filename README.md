@@ -21,6 +21,15 @@
 
 ---
 
+## ✨ What's New in V6.1
+
+### Engine
+- 🐛 **Fixed CODM disk-based dumps crashing with "Auto mode failed"** — obfuscated internal pointers in `CodeRegistration`/`MetadataRegistration` structs no longer abort the entire `init()`. Bad pointers are skipped with a `[WARN]` when CODM mode is active; non-CODM games retain strict error propagation.
+- 🛡️ **CODM-conditional resilience** in `load_pointers`, `load_types`, `load_generics` (ELF) and `Il2Cpp::init` (Mach-O/PE/NSO/WASM)
+- 🔄 **All targets synced**: Tauri desktop/mobile, CLI, Android JNI — same engine fix
+
+---
+
 ## ✨ What's New in V6
 
 ### Engine (same as CLI v6)
