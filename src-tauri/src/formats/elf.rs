@@ -772,11 +772,17 @@ impl Elf {
     }
 
     pub fn map_vatr_array(&mut self, addr: u64, count: u64) -> Result<Vec<u64>> {
+        if addr == 0 || count == 0 {
+            return Ok(Vec::new());
+        }
         let offset = self.map_vatr(addr)?;
         self.stream.read_ptr_array(offset, count as usize)
     }
 
     pub fn map_vatr_u32_array(&mut self, addr: u64, count: u64) -> Result<Vec<u32>> {
+        if addr == 0 || count == 0 {
+            return Ok(Vec::new());
+        }
         let offset = self.map_vatr(addr)?;
         self.stream.read_u32_array(offset, count as usize)
     }
@@ -1036,32 +1042,83 @@ impl Elf {
     fn load_pointers(&mut self, cr: &Il2CppCodeRegistration, mr: &Il2CppMetadataRegistration) -> Result<()> {
         let version = self.stream.version;
 
-        if version <= 24.1 && cr.method_pointers > 0 && cr.method_pointers_count > 0 {
-            self.method_pointers = self.map_vatr_array(cr.method_pointers, cr.method_pointers_count)?;
-        }
+        if self.codm_diag {
+            if version <= 24.1 && cr.method_pointers > 0 && cr.method_pointers_count > 0 {
+                match self.map_vatr_array(cr.method_pointers, cr.method_pointers_count) {
+                    Ok(v) => self.method_pointers = v,
+                    Err(e) => eprintln!("[WARN] Failed to load method_pointers: {e}"),
+                }
+            }
 
-        if cr.generic_method_pointers_count > 0 {
-            self.generic_method_pointers = self.map_vatr_array(cr.generic_method_pointers, cr.generic_method_pointers_count)?;
-        }
+            if cr.generic_method_pointers_count > 0 {
+                match self.map_vatr_array(cr.generic_method_pointers, cr.generic_method_pointers_count) {
+                    Ok(v) => self.generic_method_pointers = v,
+                    Err(e) => eprintln!("[WARN] Failed to load generic_method_pointers: {e}"),
+                }
+            }
 
-        if cr.invoker_pointers_count > 0 {
-            self.invoker_pointers = self.map_vatr_array(cr.invoker_pointers, cr.invoker_pointers_count)?;
-        }
+            if cr.invoker_pointers_count > 0 {
+                match self.map_vatr_array(cr.invoker_pointers, cr.invoker_pointers_count) {
+                    Ok(v) => self.invoker_pointers = v,
+                    Err(e) => eprintln!("[WARN] Failed to load invoker_pointers: {e}"),
+                }
+            }
 
-        if version < 27.0 && cr.custom_attribute_count > 0 {
-            self.custom_attribute_generators = self.map_vatr_array(cr.custom_attribute_generators, cr.custom_attribute_count)?;
-        }
+            if version < 27.0 && cr.custom_attribute_count > 0 {
+                match self.map_vatr_array(cr.custom_attribute_generators, cr.custom_attribute_count) {
+                    Ok(v) => self.custom_attribute_generators = v,
+                    Err(e) => eprintln!("[WARN] Failed to load custom_attribute_generators: {e}"),
+                }
+            }
 
-        if version > 16.0 && version < 27.0 && self.metadata_usages_count > 0 {
-            self.metadata_usages = self.map_vatr_array(mr.metadata_usages, self.metadata_usages_count)?;
-        }
+            if version > 16.0 && version < 27.0 && self.metadata_usages_count > 0 {
+                match self.map_vatr_array(mr.metadata_usages, self.metadata_usages_count) {
+                    Ok(v) => self.metadata_usages = v,
+                    Err(e) => eprintln!("[WARN] Failed to load metadata_usages: {e}"),
+                }
+            }
 
-        if version >= 22.0 && cr.reverse_pinvoke_wrapper_count > 0 {
-            self.reverse_pinvoke_wrappers = self.map_vatr_array(cr.reverse_pinvoke_wrappers, cr.reverse_pinvoke_wrapper_count)?;
-        }
+            if version >= 22.0 && cr.reverse_pinvoke_wrapper_count > 0 {
+                match self.map_vatr_array(cr.reverse_pinvoke_wrappers, cr.reverse_pinvoke_wrapper_count) {
+                    Ok(v) => self.reverse_pinvoke_wrappers = v,
+                    Err(e) => eprintln!("[WARN] Failed to load reverse_pinvoke_wrappers: {e}"),
+                }
+            }
 
-        if version >= 22.0 && cr.unresolved_virtual_call_count > 0 {
-            self.unresolved_virtual_call_pointers = self.map_vatr_array(cr.unresolved_virtual_call_pointers, cr.unresolved_virtual_call_count)?;
+            if version >= 22.0 && cr.unresolved_virtual_call_count > 0 {
+                match self.map_vatr_array(cr.unresolved_virtual_call_pointers, cr.unresolved_virtual_call_count) {
+                    Ok(v) => self.unresolved_virtual_call_pointers = v,
+                    Err(e) => eprintln!("[WARN] Failed to load unresolved_virtual_call_pointers: {e}"),
+                }
+            }
+        } else {
+            if version <= 24.1 && cr.method_pointers > 0 && cr.method_pointers_count > 0 {
+                self.method_pointers = self.map_vatr_array(cr.method_pointers, cr.method_pointers_count)?;
+            }
+
+            if cr.generic_method_pointers_count > 0 {
+                self.generic_method_pointers = self.map_vatr_array(cr.generic_method_pointers, cr.generic_method_pointers_count)?;
+            }
+
+            if cr.invoker_pointers_count > 0 {
+                self.invoker_pointers = self.map_vatr_array(cr.invoker_pointers, cr.invoker_pointers_count)?;
+            }
+
+            if version < 27.0 && cr.custom_attribute_count > 0 {
+                self.custom_attribute_generators = self.map_vatr_array(cr.custom_attribute_generators, cr.custom_attribute_count)?;
+            }
+
+            if version > 16.0 && version < 27.0 && self.metadata_usages_count > 0 {
+                self.metadata_usages = self.map_vatr_array(mr.metadata_usages, self.metadata_usages_count)?;
+            }
+
+            if version >= 22.0 && cr.reverse_pinvoke_wrapper_count > 0 {
+                self.reverse_pinvoke_wrappers = self.map_vatr_array(cr.reverse_pinvoke_wrappers, cr.reverse_pinvoke_wrapper_count)?;
+            }
+
+            if version >= 22.0 && cr.unresolved_virtual_call_count > 0 {
+                self.unresolved_virtual_call_pointers = self.map_vatr_array(cr.unresolved_virtual_call_pointers, cr.unresolved_virtual_call_count)?;
+            }
         }
 
         Ok(())
@@ -1102,44 +1159,85 @@ impl Elf {
                 }
                 self.types.push(il2cpp_type);
                 self.type_dic.insert(*ptr, idx);
+            } else if self.codm_diag {
+                let offset = match self.map_vatr(*ptr) {
+                    Ok(o) => o,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                self.stream.set_position(offset);
+                let mut il2cpp_type = match Il2CppType::read(&mut self.stream) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        self.types.push(Il2CppType::default());
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                let pre = il2cpp_type.type_enum;
+                il2cpp_type.init_codm(version);
+                if pre != il2cpp_type.type_enum {
+                    decoded += 1;
+                }
+                self.types.push(il2cpp_type);
+                self.type_dic.insert(*ptr, idx);
             } else {
                 let offset = self.map_vatr(*ptr)?;
                 self.stream.set_position(offset);
                 let mut il2cpp_type = Il2CppType::read(&mut self.stream)?;
-                if self.codm_diag {
-                    let pre = il2cpp_type.type_enum;
-                    il2cpp_type.init_codm(version);
-                    if pre != il2cpp_type.type_enum {
-                        decoded += 1;
-                    }
-                } else {
-                    il2cpp_type.init(version);
-                }
+                il2cpp_type.init(version);
                 self.types.push(il2cpp_type);
                 self.type_dic.insert(*ptr, idx);
             }
         }
-        if self.codm_diag {
+        if self.codm_diag && skipped > 0 {
             eprintln!("[CODM] init_codm decoded {} of {} Il2CppType entries (skipped {})",
                 decoded, type_pointers.len(), skipped);
         }
 
         self.field_offsets_are_pointers = version > 21.0;
         if version == 21.0 && mr.field_offsets_count >= 6 {
-            let test = self.map_vatr_array(mr.field_offsets, std::cmp::min(6, mr.field_offsets_count))?;
-            self.field_offsets_are_pointers = test[0] == 0 && test[1] == 0 && test[2] == 0 &&
-                test[3] == 0 && test[4] == 0 && test[5] > 0;
+            if let Ok(test) = self.map_vatr_array(mr.field_offsets, std::cmp::min(6, mr.field_offsets_count)) {
+                if test.len() >= 6 {
+                    self.field_offsets_are_pointers = test[0] == 0 && test[1] == 0 && test[2] == 0 &&
+                        test[3] == 0 && test[4] == 0 && test[5] > 0;
+                }
+            }
         }
 
-        self.field_offsets = self.map_vatr_array(mr.field_offsets, mr.field_offsets_count)?;
+        if self.codm_diag {
+            match self.map_vatr_array(mr.field_offsets, mr.field_offsets_count) {
+                Ok(v) => self.field_offsets = v,
+                Err(e) => eprintln!("[WARN] Failed to load field_offsets: {e}"),
+            }
+        } else {
+            self.field_offsets = self.map_vatr_array(mr.field_offsets, mr.field_offsets_count)?;
+        }
 
         if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
-            let sizes_offset = self.map_vatr(mr.type_definitions_sizes)?;
-            self.stream.set_position(sizes_offset);
-            self.type_definition_sizes.clear();
-            self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
-            for _ in 0..mr.type_definitions_sizes_count {
-                self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
+            if self.codm_diag {
+                if let Ok(sizes_offset) = self.map_vatr(mr.type_definitions_sizes) {
+                    self.stream.set_position(sizes_offset);
+                    self.type_definition_sizes.clear();
+                    self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+                    for _ in 0..mr.type_definitions_sizes_count {
+                        match Il2CppTypeDefinitionSizes::read(&mut self.stream) {
+                            Ok(s) => self.type_definition_sizes.push(s),
+                            Err(_) => break,
+                        }
+                    }
+                }
+            } else {
+                let sizes_offset = self.map_vatr(mr.type_definitions_sizes)?;
+                self.stream.set_position(sizes_offset);
+                self.type_definition_sizes.clear();
+                self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+                for _ in 0..mr.type_definitions_sizes_count {
+                    self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
+                }
             }
         }
 
@@ -1149,30 +1247,80 @@ impl Elf {
     fn load_generics(&mut self, mr: &Il2CppMetadataRegistration) -> Result<()> {
         let version = self.stream.version;
 
-        self.generic_inst_pointers = self.map_vatr_array(mr.generic_insts, mr.generic_insts_count)?;
-
-        self.generic_insts.clear();
-        for ptr in &self.generic_inst_pointers {
-            let offset = self.map_vatr(*ptr)?;
-            self.stream.set_position(offset);
-            self.generic_insts.push(Il2CppGenericInst::read(&mut self.stream)?);
-        }
-
-        if mr.generic_method_table_count > 0 {
-            let offset = self.map_vatr(mr.generic_method_table)?;
-            self.stream.set_position(offset);
-            self.generic_method_table.clear();
-            for _ in 0..mr.generic_method_table_count {
-                self.generic_method_table.push(Il2CppGenericMethodFunctionsDefinitions::read(&mut self.stream, version)?);
+        if self.codm_diag {
+            match self.map_vatr_array(mr.generic_insts, mr.generic_insts_count) {
+                Ok(v) => self.generic_inst_pointers = v,
+                Err(e) => {
+                    eprintln!("[WARN] Failed to load generic_inst_pointers: {e}");
+                    return Ok(());
+                }
             }
-        }
 
-        if mr.method_specs_count > 0 {
-            let offset = self.map_vatr(mr.method_specs)?;
-            self.stream.set_position(offset);
-            self.method_specs.clear();
-            for _ in 0..mr.method_specs_count {
-                self.method_specs.push(Il2CppMethodSpec::read(&mut self.stream)?);
+            self.generic_insts.clear();
+            for ptr in &self.generic_inst_pointers {
+                match self.map_vatr(*ptr) {
+                    Ok(offset) => {
+                        self.stream.set_position(offset);
+                        match Il2CppGenericInst::read(&mut self.stream) {
+                            Ok(gi) => self.generic_insts.push(gi),
+                            Err(_) => self.generic_insts.push(Il2CppGenericInst::default()),
+                        }
+                    }
+                    Err(_) => self.generic_insts.push(Il2CppGenericInst::default()),
+                }
+            }
+
+            if mr.generic_method_table_count > 0 {
+                if let Ok(offset) = self.map_vatr(mr.generic_method_table) {
+                    self.stream.set_position(offset);
+                    self.generic_method_table.clear();
+                    for _ in 0..mr.generic_method_table_count {
+                        match Il2CppGenericMethodFunctionsDefinitions::read(&mut self.stream, version) {
+                            Ok(t) => self.generic_method_table.push(t),
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+
+            if mr.method_specs_count > 0 {
+                if let Ok(offset) = self.map_vatr(mr.method_specs) {
+                    self.stream.set_position(offset);
+                    self.method_specs.clear();
+                    for _ in 0..mr.method_specs_count {
+                        match Il2CppMethodSpec::read(&mut self.stream) {
+                            Ok(ms) => self.method_specs.push(ms),
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+        } else {
+            self.generic_inst_pointers = self.map_vatr_array(mr.generic_insts, mr.generic_insts_count)?;
+
+            self.generic_insts.clear();
+            for ptr in &self.generic_inst_pointers {
+                let offset = self.map_vatr(*ptr)?;
+                self.stream.set_position(offset);
+                self.generic_insts.push(Il2CppGenericInst::read(&mut self.stream)?);
+            }
+
+            if mr.generic_method_table_count > 0 {
+                let offset = self.map_vatr(mr.generic_method_table)?;
+                self.stream.set_position(offset);
+                self.generic_method_table.clear();
+                for _ in 0..mr.generic_method_table_count {
+                    self.generic_method_table.push(Il2CppGenericMethodFunctionsDefinitions::read(&mut self.stream, version)?);
+                }
+            }
+
+            if mr.method_specs_count > 0 {
+                let offset = self.map_vatr(mr.method_specs)?;
+                self.stream.set_position(offset);
+                self.method_specs.clear();
+                for _ in 0..mr.method_specs_count {
+                    self.method_specs.push(Il2CppMethodSpec::read(&mut self.stream)?);
+                }
             }
         }
 

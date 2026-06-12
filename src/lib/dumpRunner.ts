@@ -22,7 +22,6 @@ export async function beginDump(): Promise<void> {
   const mp = get(metadataPath);
   if (!bp || !mp) return;
 
-  // Listeners must exist before Rust emits logs or input prompts.
   await setupDumpEvents();
 
   setDumpInProgress(true);

@@ -277,57 +277,144 @@ impl Il2Cpp {
         let cr = Il2CppCodeRegistration::read(&mut self.stream, self.version)?;
 
 
-        if cr.method_pointers > 0 && cr.method_pointers_count > 0 {
-
-            let mp_offset = map_vatr(cr.method_pointers)?;
-            self.method_pointers = self.stream.read_ptr_array(mp_offset, cr.method_pointers_count as usize)?;
-        }
-
-        if cr.generic_method_pointers > 0 && cr.generic_method_pointers_count > 0 {
-
-            let gmp_offset = map_vatr(cr.generic_method_pointers)?;
-            self.generic_method_pointers = self.stream.read_ptr_array(gmp_offset, cr.generic_method_pointers_count as usize)?;
-        }
-
-        if cr.invoker_pointers > 0 && cr.invoker_pointers_count > 0 {
-
-            let ip_offset = map_vatr(cr.invoker_pointers)?;
-            self.invoker_pointers = self.stream.read_ptr_array(ip_offset, cr.invoker_pointers_count as usize)?;
-        }
-
-        if self.version < 27.0 && cr.custom_attribute_generators > 0 && cr.custom_attribute_count > 0 {
-            let ca_offset = map_vatr(cr.custom_attribute_generators)?;
-            self.custom_attribute_generators = self.stream.read_ptr_array(ca_offset, cr.custom_attribute_count as usize)?;
-        }
-
-        if mr.metadata_usages > 0 && mr.metadata_usages_count > 0 && self.version < 27.0 {
-            let mu_offset = map_vatr(mr.metadata_usages)?;
-            self.metadata_usages = self.stream.read_ptr_array(mu_offset, mr.metadata_usages_count as usize)?;
-        }
-
-        self.field_offsets_are_pointers = self.version > 21.0;
-        if mr.field_offsets > 0 && mr.field_offsets_count > 0 {
-
-            let fo_offset = map_vatr(mr.field_offsets)?;
-            if self.field_offsets_are_pointers {
-                self.field_offset_pointers = self.stream.read_ptr_array(fo_offset, mr.field_offsets_count as usize)?;
-            } else {
-                self.stream.set_position(fo_offset);
-                let mut raw = Vec::with_capacity(mr.field_offsets_count as usize);
-                for _ in 0..mr.field_offsets_count {
-                    raw.push(self.stream.read_i32()?);
+        if self.codm {
+            if cr.method_pointers > 0 && cr.method_pointers_count > 0 {
+                match map_vatr(cr.method_pointers) {
+                    Ok(mp_offset) => match self.stream.read_ptr_array(mp_offset, cr.method_pointers_count as usize) {
+                        Ok(v) => self.method_pointers = v,
+                        Err(e) => eprintln!("[WARN] Failed to read method_pointers: {e}"),
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map method_pointers: {e}"),
                 }
-                self.field_offsets = vec![raw];
             }
-        }
 
-        if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
-            let sizes_offset = map_vatr(mr.type_definitions_sizes)?;
-            self.stream.set_position(sizes_offset);
-            self.type_definition_sizes.clear();
-            self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
-            for _ in 0..mr.type_definitions_sizes_count {
-                self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
+            if cr.generic_method_pointers > 0 && cr.generic_method_pointers_count > 0 {
+                match map_vatr(cr.generic_method_pointers) {
+                    Ok(gmp_offset) => match self.stream.read_ptr_array(gmp_offset, cr.generic_method_pointers_count as usize) {
+                        Ok(v) => self.generic_method_pointers = v,
+                        Err(e) => eprintln!("[WARN] Failed to read generic_method_pointers: {e}"),
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map generic_method_pointers: {e}"),
+                }
+            }
+
+            if cr.invoker_pointers > 0 && cr.invoker_pointers_count > 0 {
+                match map_vatr(cr.invoker_pointers) {
+                    Ok(ip_offset) => match self.stream.read_ptr_array(ip_offset, cr.invoker_pointers_count as usize) {
+                        Ok(v) => self.invoker_pointers = v,
+                        Err(e) => eprintln!("[WARN] Failed to read invoker_pointers: {e}"),
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map invoker_pointers: {e}"),
+                }
+            }
+
+            if self.version < 27.0 && cr.custom_attribute_generators > 0 && cr.custom_attribute_count > 0 {
+                match map_vatr(cr.custom_attribute_generators) {
+                    Ok(ca_offset) => match self.stream.read_ptr_array(ca_offset, cr.custom_attribute_count as usize) {
+                        Ok(v) => self.custom_attribute_generators = v,
+                        Err(e) => eprintln!("[WARN] Failed to read custom_attribute_generators: {e}"),
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map custom_attribute_generators: {e}"),
+                }
+            }
+
+            if mr.metadata_usages > 0 && mr.metadata_usages_count > 0 && self.version < 27.0 {
+                match map_vatr(mr.metadata_usages) {
+                    Ok(mu_offset) => match self.stream.read_ptr_array(mu_offset, mr.metadata_usages_count as usize) {
+                        Ok(v) => self.metadata_usages = v,
+                        Err(e) => eprintln!("[WARN] Failed to read metadata_usages: {e}"),
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map metadata_usages: {e}"),
+                }
+            }
+
+            self.field_offsets_are_pointers = self.version > 21.0;
+            if mr.field_offsets > 0 && mr.field_offsets_count > 0 {
+                match map_vatr(mr.field_offsets) {
+                    Ok(fo_offset) => {
+                        if self.field_offsets_are_pointers {
+                            match self.stream.read_ptr_array(fo_offset, mr.field_offsets_count as usize) {
+                                Ok(v) => self.field_offset_pointers = v,
+                                Err(e) => eprintln!("[WARN] Failed to read field_offset_pointers: {e}"),
+                            }
+                        } else {
+                            self.stream.set_position(fo_offset);
+                            let mut raw = Vec::with_capacity(mr.field_offsets_count as usize);
+                            for _ in 0..mr.field_offsets_count {
+                                match self.stream.read_i32() {
+                                    Ok(v) => raw.push(v),
+                                    Err(_) => break,
+                                }
+                            }
+                            self.field_offsets = vec![raw];
+                        }
+                    },
+                    Err(e) => eprintln!("[WARN] Failed to map field_offsets: {e}"),
+                }
+            }
+
+            if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
+                if let Ok(sizes_offset) = map_vatr(mr.type_definitions_sizes) {
+                    self.stream.set_position(sizes_offset);
+                    self.type_definition_sizes.clear();
+                    self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+                    for _ in 0..mr.type_definitions_sizes_count {
+                        match Il2CppTypeDefinitionSizes::read(&mut self.stream) {
+                            Ok(s) => self.type_definition_sizes.push(s),
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+        } else {
+            if cr.method_pointers > 0 && cr.method_pointers_count > 0 {
+                let mp_offset = map_vatr(cr.method_pointers)?;
+                self.method_pointers = self.stream.read_ptr_array(mp_offset, cr.method_pointers_count as usize)?;
+            }
+
+            if cr.generic_method_pointers > 0 && cr.generic_method_pointers_count > 0 {
+                let gmp_offset = map_vatr(cr.generic_method_pointers)?;
+                self.generic_method_pointers = self.stream.read_ptr_array(gmp_offset, cr.generic_method_pointers_count as usize)?;
+            }
+
+            if cr.invoker_pointers > 0 && cr.invoker_pointers_count > 0 {
+                let ip_offset = map_vatr(cr.invoker_pointers)?;
+                self.invoker_pointers = self.stream.read_ptr_array(ip_offset, cr.invoker_pointers_count as usize)?;
+            }
+
+            if self.version < 27.0 && cr.custom_attribute_generators > 0 && cr.custom_attribute_count > 0 {
+                let ca_offset = map_vatr(cr.custom_attribute_generators)?;
+                self.custom_attribute_generators = self.stream.read_ptr_array(ca_offset, cr.custom_attribute_count as usize)?;
+            }
+
+            if mr.metadata_usages > 0 && mr.metadata_usages_count > 0 && self.version < 27.0 {
+                let mu_offset = map_vatr(mr.metadata_usages)?;
+                self.metadata_usages = self.stream.read_ptr_array(mu_offset, mr.metadata_usages_count as usize)?;
+            }
+
+            self.field_offsets_are_pointers = self.version > 21.0;
+            if mr.field_offsets > 0 && mr.field_offsets_count > 0 {
+                let fo_offset = map_vatr(mr.field_offsets)?;
+                if self.field_offsets_are_pointers {
+                    self.field_offset_pointers = self.stream.read_ptr_array(fo_offset, mr.field_offsets_count as usize)?;
+                } else {
+                    self.stream.set_position(fo_offset);
+                    let mut raw = Vec::with_capacity(mr.field_offsets_count as usize);
+                    for _ in 0..mr.field_offsets_count {
+                        raw.push(self.stream.read_i32()?);
+                    }
+                    self.field_offsets = vec![raw];
+                }
+            }
+
+            if mr.type_definitions_sizes > 0 && mr.type_definitions_sizes_count > 0 {
+                let sizes_offset = map_vatr(mr.type_definitions_sizes)?;
+                self.stream.set_position(sizes_offset);
+                self.type_definition_sizes.clear();
+                self.type_definition_sizes.reserve(mr.type_definitions_sizes_count as usize);
+                for _ in 0..mr.type_definitions_sizes_count {
+                    self.type_definition_sizes.push(Il2CppTypeDefinitionSizes::read(&mut self.stream)?);
+                }
             }
         }
 

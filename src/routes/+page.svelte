@@ -106,7 +106,7 @@
             </div>
             <div>
               <h1 class="text-sm font-semibold tracking-tight">{$t.app_name}</h1>
-              <p class="text-[10px] m3-secondary">v6.0 {currentOs}</p>
+              <p class="text-[10px] m3-secondary">v6.1 {currentOs}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
