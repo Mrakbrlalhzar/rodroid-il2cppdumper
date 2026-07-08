@@ -1,79 +1,44 @@
-name: Build Android APK
+# .github/workflows/build-cli-armv7.yml
+name: Build CLI for Android ARMv7
 
 on:
-  workflow_dispatch:  # اجرای دستی
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:  # امکان اجرای دستی
 
 env:
-  PROJECT_PATH: rodroid-il2cppdumper  # مسیر پروژه Tauri
-  ANDROID_NDK_VERSION: 25.2.9519653
-  JAVA_VERSION: 17
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build-android:
-    runs-on: ubuntu-24.04
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-          cache-dependency-path: '${{ env.PROJECT_PATH }}/pnpm-lock.yaml'
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: armv7-linux-androideabi
+        override: true
 
-      - name: Install pnpm
-        run: npm install -g pnpm
+    - name: Install Android NDK
+      run: |
+        wget https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+        unzip android-ndk-r26d-linux.zip
+        echo "ANDROID_NDK_HOME=${{ github.workspace }}/android-ndk-r26d" >> $GITHUB_ENV
+        echo "${{ github.workspace }}/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      - name: Install frontend dependencies
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: pnpm install
+    - name: Build for armv7
+      run: |
+        export ARMV7_LINUX_ANDROIDEABI_CC=armv7a-linux-androideabi21-clang
+        cargo build --target armv7-linux-androideabi --release
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install specific Android NDK
-        run: |
-          echo "y" | sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
-          echo "ndk.dir=${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}" > ${{ env.PROJECT_PATH }}/src-tauri/android/local.properties
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: armv7-linux-androideabi
-
-      - name: Cache Rust dependencies
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.PROJECT_PATH }}/src-tauri
-
-      - name: Install Tauri prerequisites (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Initialize Tauri Android project
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: |
-          pnpm tauri android init
-
-      - name: Build Android APK (armv7)
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: |
-          pnpm tauri android build --target armv7-linux-androideabi --apk
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rodroid-armv7-android8-apk
-          path: |
-            ${{ env.PROJECT_PATH }}/src-tauri/android/app/build/outputs/apk/universal/debug/*.apk
-            ${{ env.PROJECT_PATH }}/src-tauri/android/app/build/outputs/apk/armv7/debug/*.apk
+    - name: Upload artifact (CLI)
+      uses: actions/upload-artifact@v4
+      with:
+        name: il2cpp_dumper-cli-armv7
+        path: target/armv7-linux-androideabi/release/il2cpp_dumper
