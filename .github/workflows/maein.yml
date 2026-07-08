@@ -25,6 +25,7 @@ jobs:
         toolchain: stable
         target: armv7-linux-androideabi
         override: true
+        components: rust-src  # برای build-std در صورت نیاز
 
     - name: Install Android NDK
       run: |
@@ -32,15 +33,14 @@ jobs:
         unzip android-ndk-${NDK_VERSION}-linux.zip
         echo "ANDROID_NDK_HOME=${{ github.workspace }}/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
         echo "${{ github.workspace }}/android-ndk-${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-        echo "SYSROOT=${{ github.workspace }}/android-ndk-${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
 
-    - name: Build for armv7 with proper linker flags
+    - name: Install cargo-ndk
+      run: cargo install cargo-ndk
+
+    - name: Build for armv7 using cargo-ndk
       run: |
-        export ARMV7_LINUX_ANDROIDEABI_CC=armv7a-linux-androideabi21-clang
-        export ARMV7_LINUX_ANDROIDEABI_AR=armv7a-linux-androideabi-ar
-        export RUSTFLAGS="-C linker=armv7a-linux-androideabi21-clang -L $SYSROOT/usr/lib/arm-linux-androideabi"
         cd src-tauri
-        cargo build --target armv7-linux-androideabi --release --verbose
+        cargo ndk --target armv7-linux-androideabi --platform 21 -- build --release
 
     - name: Upload artifact (CLI)
       uses: actions/upload-artifact@v4
